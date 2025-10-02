@@ -18,4 +18,7 @@ export const env = {
   resendKey: process.env.RESEND_API_KEY ?? '',
   mailFrom: process.env.MAIL_FROM ?? '',
   issueAlertTo: process.env.ISSUE_ALERT_TO ?? process.env.BUG_ALERT_TO ?? '',
+  summaryReportAlertTo:
+    process.env.SUMMARY_REPORT_ALERT_TO ?? process.env.ISSUE_ALERT_TO ?? '',
 };
+

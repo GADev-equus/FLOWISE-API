@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { createIssueFromFlowise } from '../controllers/issuesController.js';
+import { createSummaryReportFromFlowise } from '../controllers/summaryReportsController.js';
 import { Item } from '../models/Item.js';
 
 export const flowise = Router();
@@ -31,6 +32,9 @@ flowise.post('/flowise/webhook', async (req, res, next) => {
 // Flowise Issue webhook
 flowise.post('/flowise/issue-report', createIssueFromFlowise);
 
+// Flowise Summary Report webhook
+flowise.post('/flowise/summary-report', createSummaryReportFromFlowise);
+
 /**
  * Tool example: send an email triggered by Flowise (or any client).
  * POST /tools/send-email
@@ -51,3 +55,4 @@ flowise.post('/tools/send-email', async (req, res, next) => {
     next(err);
   }
 });
+
