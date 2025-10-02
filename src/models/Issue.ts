@@ -13,6 +13,10 @@ const issueSchema = new Schema(
       enum: ['open', 'triaged', 'in_progress', 'resolved', 'closed'],
       default: 'open',
     },
+    chatId: { type: String, default: '' },
+    sessionId: { type: String, default: '' },
+    chatflowId: { type: String, default: '' },
+    nodeId: { type: String, default: '' },
     client: {
       ip: { type: String, default: '' },
       userAgent: { type: String, default: '' },

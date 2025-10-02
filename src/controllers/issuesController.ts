@@ -8,6 +8,10 @@ type SimplifiedIssue = {
   title: string;
   description?: string;
   date?: string;
+  chatId?: string;
+  sessionId?: string;
+  chatflowId?: string;
+  nodeId?: string;
 };
 
 const flowiseSchema = z.object({
@@ -16,6 +20,10 @@ const flowiseSchema = z.object({
     title: z.string().optional(),
     description: z.string().optional(),
     date: z.string().optional(),
+    chatId: z.string().optional(),
+    sessionId: z.string().optional(),
+    chatflowId: z.string().optional(),
+    nodeId: z.string().optional(),
   }),
 });
 
@@ -23,6 +31,10 @@ const manualSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
   date: z.string().optional(),
+  chatId: z.string().optional(),
+  sessionId: z.string().optional(),
+  chatflowId: z.string().optional(),
+  nodeId: z.string().optional(),
 });
 
 const issueIdSchema = z.object({
@@ -43,12 +55,24 @@ function extractClient(req: Request): ClientInfo {
 
 function parseFlowiseIssuePayload(input: unknown): SimplifiedIssue {
   const parsed = flowiseSchema.parse(input);
-  const { title = 'Issue', description = '', date } = parsed.payload;
+  const {
+    title = 'Issue',
+    description = '',
+    date,
+    chatId,
+    sessionId,
+    chatflowId,
+    nodeId,
+  } = parsed.payload;
 
   return {
     title,
     description,
     date,
+    chatId,
+    sessionId,
+    chatflowId,
+    nodeId,
   };
 }
 
@@ -74,12 +98,20 @@ async function maybeSendIssueEmail(issue: SimplifiedIssue & { source: string }):
 }
 
 function buildIssueDocument(issue: SimplifiedIssue, source: string, client: ClientInfo) {
-  return {
+  const baseDocument = {
     source,
     title: issue.title,
     description: issue.description ?? '',
     details: issue.date ?? '',
     client,
+  };
+
+  return {
+    ...baseDocument,
+    ...(issue.chatId !== undefined ? { chatId: issue.chatId } : {}),
+    ...(issue.sessionId !== undefined ? { sessionId: issue.sessionId } : {}),
+    ...(issue.chatflowId !== undefined ? { chatflowId: issue.chatflowId } : {}),
+    ...(issue.nodeId !== undefined ? { nodeId: issue.nodeId } : {}),
   };
 }
 
