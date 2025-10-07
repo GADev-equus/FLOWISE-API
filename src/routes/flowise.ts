@@ -2,32 +2,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { createIssueFromFlowise } from '../controllers/issuesController.js';
 import { createSummaryReportFromFlowise } from '../controllers/summaryReportsController.js';
-import { Item } from '../models/Item.js';
 
 export const flowise = Router();
-
-/**
- * Webhook example: store Flowise event payloads.
- * POST /flowise/webhook
- */
-const webhookSchema = z.object({
-  type: z.string(),
-  runId: z.string().optional(),
-  payload: z.any(),
-});
-
-flowise.post('/flowise/webhook', async (req, res, next) => {
-  try {
-    const evt = webhookSchema.parse(req.body);
-    const doc = await Item.create({
-      title: `flowise:${evt.type}`,
-      data: { runId: evt.runId, payload: evt.payload },
-    });
-    res.status(202).json({ received: true, id: doc._id });
-  } catch (err) {
-    next(err);
-  }
-});
 
 // Flowise Issue webhook
 flowise.post('/flowise/issue-report', createIssueFromFlowise);
