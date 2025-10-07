@@ -20,5 +20,10 @@ export const env = {
   issueAlertTo: process.env.ISSUE_ALERT_TO ?? process.env.BUG_ALERT_TO ?? '',
   summaryReportAlertTo:
     process.env.SUMMARY_REPORT_ALERT_TO ?? process.env.ISSUE_ALERT_TO ?? '',
+  studentAlertTo:
+    process.env.STUDENT_ALERT_TO ??
+    process.env.SUMMARY_REPORT_ALERT_TO ??
+    process.env.ISSUE_ALERT_TO ??
+    '',
 };
 

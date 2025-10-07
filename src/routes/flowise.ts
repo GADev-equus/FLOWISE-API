@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { createIssueFromFlowise } from '../controllers/issuesController.js';
+import { createStudentFromFlowise } from '../controllers/studentsController.js';
 import { createSummaryReportFromFlowise } from '../controllers/summaryReportsController.js';
 
 export const flowise = Router();
@@ -10,6 +11,9 @@ flowise.post('/flowise/issue-report', createIssueFromFlowise);
 
 // Flowise Summary Report webhook
 flowise.post('/flowise/summary-report', createSummaryReportFromFlowise);
+
+// Flowise Student webhook
+flowise.post('/flowise/student', createStudentFromFlowise);
 
 /**
  * Tool example: send an email triggered by Flowise (or any client).

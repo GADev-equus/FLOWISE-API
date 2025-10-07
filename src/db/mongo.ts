@@ -9,5 +9,12 @@ export async function connectMongo(): Promise<void> {
 
   mongoose.set('strictQuery', true);
   await mongoose.connect(env.mongodbUri);
+  try {
+    const { Student } = await import('../models/Student.js');
+    await Student.syncIndexes();
+  } catch (error) {
+    logger.warn({ err: error }, 'Failed to sync student indexes');
+  }
+
   logger.info('MongoDB connected');
 }
