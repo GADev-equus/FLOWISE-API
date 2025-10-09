@@ -26,7 +26,7 @@ const flowContextSchema = z.object({
   chatflowId: z.string().optional(),
 });
 
-const manualSchema = z
+const manualBaseSchema = z
   .object({
     name: z.string().min(1),
     nickname: z.string().optional().default(''),
@@ -39,6 +39,22 @@ const manualSchema = z
     preferredColourForDyslexia: z.string().optional().default(''),
   })
   .merge(flowContextSchema);
+
+const manualSchema = z.preprocess((data) => {
+  if (!data || typeof data !== 'object') {
+    return data;
+  }
+
+  const clone = { ...(data as Record<string, unknown>) };
+  const guardian = clone.guardian;
+
+  if (typeof guardian === 'string') {
+    const trimmed = guardian.trim();
+    clone.guardian = trimmed ? { email: trimmed } : undefined;
+  }
+
+  return clone;
+}, manualBaseSchema);
 
 const flowiseSchema = z.object({
   id: z.string().optional(),
@@ -357,3 +373,4 @@ export async function getStudent(
     next(error);
   }
 }
+
