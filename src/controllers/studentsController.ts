@@ -12,13 +12,14 @@ const enrolmentSchema = z.object({
   examDates: z.array(z.string()).optional().default([]),
 });
 
-const guardianSchema = z
-  .object({
-    name: z.string().optional().default(''),
-    email: z.string().optional().default(''),
-  })
-  .optional()
-  .default({ name: '', email: '' });
+const guardianSchema = z.object({
+  name: z.string().trim().min(1, 'Guardian name is required'),
+  email: z
+    .string()
+    .trim()
+    .min(1, 'Guardian email is required')
+    .email('Guardian email must be valid'),
+});
 
 const flowContextSchema = z.object({
   chatId: z.string().optional(),
@@ -38,7 +39,19 @@ const manualBaseSchema = z
     guardian: guardianSchema,
     preferredColourForDyslexia: z.string().optional().default(''),
   })
-  .merge(flowContextSchema);
+  .merge(flowContextSchema)
+  .superRefine((data, ctx) => {
+    const studentEmail = data.email?.trim().toLowerCase();
+    const guardianEmail = data.guardian?.email?.trim().toLowerCase();
+
+    if (studentEmail && guardianEmail && studentEmail === guardianEmail) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['guardian', 'email'],
+        message: 'Guardian email must be different from student email.',
+      });
+    }
+  });
 
 const manualSchema = z.preprocess((data) => {
   if (!data || typeof data !== 'object') {
@@ -49,8 +62,16 @@ const manualSchema = z.preprocess((data) => {
   const guardian = clone.guardian;
 
   if (typeof guardian === 'string') {
-    const trimmed = guardian.trim();
-    clone.guardian = trimmed ? { email: trimmed } : undefined;
+    clone.guardian = { email: guardian.trim() };
+  } else if (guardian && typeof guardian === 'object') {
+    const candidate = guardian as Record<string, unknown>;
+    const name = typeof candidate.name === 'string' ? candidate.name.trim() : candidate.name;
+    const email = typeof candidate.email === 'string' ? candidate.email.trim() : candidate.email;
+    clone.guardian = {
+      ...candidate,
+      ...(name !== undefined ? { name } : {}),
+      ...(email !== undefined ? { email } : {}),
+    };
   }
 
   return clone;
@@ -221,8 +242,8 @@ function handleDuplicateKeyError(res: Response, error: unknown): boolean {
 function normalizeStudentPayload(input: ManualStudent): NormalizedStudent {
   const trimmedNickname = input.nickname?.trim() ?? '';
   const normalizedGuardian = {
-    name: input.guardian?.name?.trim() ?? '',
-    email: input.guardian?.email?.trim().toLowerCase() ?? '',
+    name: input.guardian.name.trim(),
+    email: input.guardian.email.trim().toLowerCase(),
   };
 
   const enrolments = input.enrolments.map((enrolment) => ({
@@ -373,4 +394,9 @@ export async function getStudent(
     next(error);
   }
 }
+
+
+
+
+
 
