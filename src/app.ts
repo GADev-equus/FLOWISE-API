@@ -17,9 +17,19 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
 
 // CORS
+const defaultCorsOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'https://flow.equussystems.co',
+];
+
+const allowedOrigins = Array.from(
+  new Set([...(env.corsOrigins ?? []), ...defaultCorsOrigins])
+);
+
 app.use(
   cors({
-    origin: env.corsOrigins.length ? env.corsOrigins : true,
+    origin: allowedOrigins,
     credentials: false,
   })
 );
