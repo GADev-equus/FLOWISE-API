@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { emailService } from '../services/emailService.js';
 
 export const health = Router();
 
@@ -12,4 +13,8 @@ health.get('/config', (_req, res) => {
     version: 'v1',
     basePath: process.env.API_PREFIX ?? '/api/v1',
   });
+});
+
+health.get('/email-status', (_req, res) => {
+  res.json(emailService.getStatus());
 });

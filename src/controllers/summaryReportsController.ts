@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { env } from '../config/env.js';
+import { emailService } from '../services/emailService.js';
 import { SummaryReport } from '../models/SummaryReport.js';
 import { logger } from '../utils/logger.js';
 
@@ -74,6 +75,14 @@ function formatField(
   return `<p><strong>${label}:</strong><br />${escaped}</p>`;
 }
 
+function formatFieldText(label: string, value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  return `${label}:
+${value}`;
+}
 async function maybeSendReportEmail(
   report: SummaryReportEmailPayload,
 ): Promise<void> {
@@ -82,42 +91,51 @@ async function maybeSendReportEmail(
   }
 
   try {
-    const { sendEmail } = await import('../services/mailer.js');
     const subject = `Summary Report: ${report.title}`;
-    const header = formatField(
-      'Source',
-      report.sourceId ? `${report.source} (${report.sourceId})` : report.source,
-    );
+    const sections = [
+      { label: 'Source', value: report.sourceId ? `${report.source} (${report.sourceId})` : report.source },
+      { label: 'Date', value: report.date },
+      { label: 'Participants', value: report.participants },
+      { label: 'Scope Covered', value: report.scopeCovered },
+      { label: 'Key Learnings', value: report.keyLearnings },
+      { label: 'Misconceptions Clarified', value: report.misconceptionsClarified },
+      { label: 'Student Strengths', value: report.studentStrengths },
+      { label: 'Gaps / Next Priorities', value: report.gapsNextPriorities },
+      { label: 'Suggested Next Steps', value: report.suggestedNextSteps },
+      { label: 'Questions', value: report.questions },
+      { label: 'Sources', value: report.sources },
+      { label: 'Compact Recap', value: report.compactRecap },
+      { label: 'Chat ID', value: report.chatId },
+      { label: 'Session ID', value: report.sessionId },
+      { label: 'Chatflow ID', value: report.chatflowId },
+    ];
 
-    const htmlSections = [
-      header,
-      formatField('Date', report.date),
-      formatField('Participants', report.participants),
-      formatField('Scope Covered', report.scopeCovered),
-      formatField('Key Learnings', report.keyLearnings),
-      formatField('Misconceptions Clarified', report.misconceptionsClarified),
-      formatField('Student Strengths', report.studentStrengths),
-      formatField('Gaps / Next Priorities', report.gapsNextPriorities),
-      formatField('Suggested Next Steps', report.suggestedNextSteps),
-      formatField('Questions', report.questions),
-      formatField('Sources', report.sources),
-      formatField('Compact Recap', report.compactRecap),
-      formatField('Chat ID', report.chatId),
-      formatField('Session ID', report.sessionId),
-      formatField('Chatflow ID', report.chatflowId),
-    ].filter(Boolean) as string[];
+    const htmlSections = sections
+      .map((section) => formatField(section.label, section.value))
+      .filter(Boolean) as string[];
 
     if (!htmlSections.length) {
       return;
     }
 
-    const html = htmlSections.join('');
-    await sendEmail(env.summaryReportAlertTo, subject, html);
+    const textSections = sections
+      .map((section) => formatFieldText(section.label, section.value))
+      .filter(Boolean) as string[];
+
+    const result = await emailService.send({
+      to: env.summaryReportAlertTo,
+      subject,
+      html: htmlSections.join(''),
+      text: textSections.join('\n\n'),
+    });
+
+    if (!result.success && !result.skipped) {
+      logger.warn({ err: result.error }, 'Failed to send summary report alert email');
+    }
   } catch (error) {
     logger.warn({ err: error }, 'Failed to send summary report alert email');
   }
 }
-
 export async function createSummaryReportFromFlowise(
   req: Request,
   res: Response,
@@ -198,3 +216,9 @@ export async function getSummaryReport(
     next(err);
   }
 }
+
+
+
+
+
+

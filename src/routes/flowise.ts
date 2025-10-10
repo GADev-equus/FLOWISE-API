@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createIssueFromFlowise } from '../controllers/issuesController.js';
 import { createStudentFromFlowise } from '../controllers/studentsController.js';
 import { createSummaryReportFromFlowise } from '../controllers/summaryReportsController.js';
+import { emailService } from '../services/emailService.js';
 
 export const flowise = Router();
 
@@ -28,11 +29,13 @@ const mailSchema = z.object({
 flowise.post('/tools/send-email', async (req, res, next) => {
   try {
     const { to, subject, html } = mailSchema.parse(req.body);
-    const { sendEmail } = await import('../services/mailer.js');
-    const result = await sendEmail(to, subject, html);
+    const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const result = await emailService.send({ to, subject, html, text });
     res.status(200).json({ ok: true, result });
   } catch (err) {
     next(err);
   }
 });
+
+
 

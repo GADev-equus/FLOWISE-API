@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { env } from '../config/env.js';
+import { emailService } from '../services/emailService.js';
 import { Student } from '../models/Student.js';
 import { logger } from '../utils/logger.js';
 
@@ -94,7 +95,7 @@ type ClientInfo = {
   userAgent: string;
 };
 
-type StudentEmailPayload = ManualStudent & {
+type StudentEmailPayload = NormalizedStudent & {
   source: 'manual' | 'flowise';
   sourceId?: string;
 };
@@ -114,89 +115,35 @@ function extractClient(req: Request): ClientInfo {
   return { ip, userAgent };
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function renderList(label: string, values: string[]): string | undefined {
-  if (!values.length) {
-    return undefined;
-  }
-
-  const listItems = values.map((item) => `<li>${escapeHtml(item)}</li>`).join('');
-  return `<p><strong>${label}:</strong></p><ul>${listItems}</ul>`;
-}
-
-function formatGuardian(guardian: ManualStudent['guardian']): string | undefined {
-  if (!guardian?.name && !guardian?.email) {
-    return undefined;
-  }
-
-  const name = guardian?.name ? escapeHtml(guardian.name) : undefined;
-  const email = guardian?.email ? escapeHtml(guardian.email) : undefined;
-  const lines = [name ? `Name: ${name}` : undefined, email ? `Email: ${email}` : undefined]
-    .filter(Boolean)
-    .join('<br />');
-
-  if (!lines) {
-    return undefined;
-  }
-
-  return `<p><strong>Guardian:</strong><br />${lines}</p>`;
-}
-
 async function maybeSendStudentEmail(student: StudentEmailPayload): Promise<void> {
-  if (!env.studentAlertTo) {
-    return;
-  }
-
   try {
-    const { sendEmail } = await import('../services/mailer.js');
-    const subject = `New Student: ${student.name}`;
+    const result = await emailService.sendStudentSubmissionAlert({
+      name: student.name,
+      nickname: student.nickname,
+      email: student.email,
+      age: student.age,
+      guardian: {
+        name: student.guardian.name,
+        email: student.guardian.email,
+      },
+      enrolments: student.enrolments.map((enrolment) => ({
+        subject: enrolment.subject,
+        examBody: enrolment.examBody,
+        level: enrolment.level,
+        books: enrolment.books,
+        examDates: enrolment.examDates,
+      })),
+      preferredColourForDyslexia: student.preferredColourForDyslexia,
+      chatId: student.chatId,
+      sessionId: student.sessionId,
+      chatflowId: student.chatflowId,
+      source: student.source,
+      sourceId: student.sourceId,
+    });
 
-    const guardianSection = formatGuardian(student.guardian);
-    const enrolmentsHtml = student.enrolments
-      .map((enrolment) => {
-        const header = `${escapeHtml(enrolment.subject)} · ${escapeHtml(enrolment.examBody)} (${escapeHtml(enrolment.level)})`;
-        const books = renderList('Books', enrolment.books ?? []);
-        const examDates = renderList('Exam Dates', enrolment.examDates ?? []);
-        return [`<p><strong>Enrolment:</strong><br />${header}</p>`, books, examDates]
-          .filter(Boolean)
-          .join('');
-      })
-      .join('');
-
-    const details = [
-      `<p><strong>Source:</strong> ${escapeHtml(student.source)}${
-        student.sourceId ? ` (${escapeHtml(student.sourceId)})` : ''
-      }</p>`,
-      `<p><strong>Name:</strong> ${escapeHtml(student.name)}</p>`,
-      student.nickname ? `<p><strong>Nickname:</strong> ${escapeHtml(student.nickname)}</p>` : undefined,
-      `<p><strong>Email:</strong> ${escapeHtml(student.email)}</p>`,
-      typeof student.age === 'number'
-        ? `<p><strong>Age:</strong> ${student.age}</p>`
-        : undefined,
-      student.preferredColourForDyslexia
-        ? `<p><strong>Preferred Colour:</strong> ${escapeHtml(student.preferredColourForDyslexia)}</p>`
-        : undefined,
-      guardianSection,
-      enrolmentsHtml,
-      student.chatId ? `<p><strong>Chat ID:</strong> ${escapeHtml(student.chatId)}</p>` : undefined,
-      student.sessionId ? `<p><strong>Session ID:</strong> ${escapeHtml(student.sessionId)}</p>` : undefined,
-      student.chatflowId ? `<p><strong>Chatflow ID:</strong> ${escapeHtml(student.chatflowId)}</p>` : undefined,
-    ].filter(Boolean) as string[];
-
-    if (!details.length) {
-      return;
+    if (!result.success && !result.skipped) {
+      logger.warn({ err: result.error }, 'Failed to send student alert email');
     }
-
-    const html = details.join('');
-    await sendEmail(env.studentAlertTo, subject, html);
   } catch (error) {
     logger.warn({ err: error }, 'Failed to send student alert email');
   }
@@ -394,6 +341,12 @@ export async function getStudent(
     next(error);
   }
 }
+
+
+
+
+
+
 
 
 

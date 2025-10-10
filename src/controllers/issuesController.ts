@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { env } from '../config/env.js';
+import { emailService } from '../services/emailService.js';
 import { Issue } from '../models/Issue.js';
 import { logger } from '../utils/logger.js';
 
@@ -82,21 +83,38 @@ async function maybeSendIssueEmail(issue: SimplifiedIssue & { source: string }):
   }
 
   try {
-    const { sendEmail } = await import('../services/mailer.js');
     const subject = `New Issue: ${issue.title}`;
     const lines = [
       `Source: ${issue.source}`,
       issue.description ? `Description: ${issue.description}` : undefined,
       issue.date ? `Date: ${issue.date}` : undefined,
+      issue.chatId ? `Chat ID: ${issue.chatId}` : undefined,
+      issue.sessionId ? `Session ID: ${issue.sessionId}` : undefined,
+      issue.chatflowId ? `Chatflow ID: ${issue.chatflowId}` : undefined,
+      issue.nodeId ? `Node ID: ${issue.nodeId}` : undefined,
     ].filter(Boolean) as string[];
 
-    const html = `<p>${lines.join('</p><p>')}</p>`;
-    await sendEmail(env.issueAlertTo, subject, html);
+    if (!lines.length) {
+      return;
+    }
+
+    const html = `<p>${lines.map((line) => line.replace(/\n/g, '<br />')).join('</p><p>')}</p>`;
+    const text = lines.join('\n');
+
+    const result = await emailService.send({
+      to: env.issueAlertTo,
+      subject,
+      html,
+      text,
+    });
+
+    if (!result.success && !result.skipped) {
+      logger.warn({ err: result.error }, 'Failed to send issue alert email');
+    }
   } catch (error) {
     logger.warn({ err: error }, 'Failed to send issue alert email');
   }
 }
-
 function buildIssueDocument(issue: SimplifiedIssue, source: string, client: ClientInfo) {
   const baseDocument = {
     source,
@@ -114,7 +132,6 @@ function buildIssueDocument(issue: SimplifiedIssue, source: string, client: Clie
     ...(issue.nodeId !== undefined ? { nodeId: issue.nodeId } : {}),
   };
 }
-
 export async function createIssueFromFlowise(
   req: Request,
   res: Response,
@@ -167,3 +184,7 @@ export async function getIssue(req: Request, res: Response, next: NextFunction):
     next(err);
   }
 }
+
+
+
+
