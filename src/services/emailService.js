@@ -4,60 +4,45 @@ import { logger } from '../utils/logger.js';
 import { buildStudentSubmissionEmail } from './emailTemplates/studentSubmission.js';
 
 /**
- * @typedef {string | string[]} Address
+ * @typedef {{ to: string | string[], subject: string, html?: string, text?: string }} SimpleMailOptions
  */
 
-/**
- * @typedef {Object} SendEmailOptions
- * @property {Address} to
- * @property {string} subject
- * @property {string} [html]
- * @property {string} [text]
- * @property {string} [from]
- * @property {Address} [bcc]
- */
+const resolveHost = () =>
+  process.env.MAILER_HOST || env.emailHost || 'localhost';
 
-/**
- * @typedef {Object} SendResult
- * @property {boolean} success
- * @property {string} [messageId]
- * @property {boolean} [skipped]
- * @property {string} [error]
- */
+const resolvePort = () =>
+  Number(process.env.MAILER_PORT ?? env.emailPort ?? 587);
 
-/**
- * @typedef {Object} StudentSubmissionEmail
- * @property {string} name
- * @property {string} [nickname]
- * @property {string} email
- * @property {number} [age]
- * @property {{ name?: string; email?: string }} guardian
- * @property {Array<{ subject: string; examBody: string; level: string; books?: string[]; examDates?: string[] }>} enrolments
- * @property {string} [preferredColourForDyslexia]
- * @property {string} [chatId]
- * @property {string} [sessionId]
- * @property {string} [chatflowId]
- * @property {'manual' | 'flowise'} source
- * @property {string} [sourceId]
- */
-
-const resolveHost = () => process.env.MAILER_HOST || env.emailHost;
-const resolvePort = () => Number(process.env.MAILER_PORT || env.emailPort || 587);
 const resolveUser = () => process.env.MAILER_USER || env.emailUser;
 const resolvePass = () => process.env.MAILER_PW || env.emailPass;
+const resolveFrom = () =>
+  process.env.MAILER_FROM ||
+  env.emailFrom ||
+  env.mailFrom ||
+  resolveUser() ||
+  'no-reply@example.com';
 
-const resolveFromAddress = () =>
-  process.env.MAILER_FROM || env.emailFrom || env.mailFrom || resolveUser() || 'no-reply@example.com';
+const resolveBcc = () =>
+  process.env.MAILER_BCC || env.emailBcc || undefined;
 
-const resolveBccAddress = (override) => override || process.env.MAILER_BCC || undefined;
+const hasRequiredConfig = () =>
+  Boolean(resolveHost() && resolveUser() && resolvePass());
 
-const hasRequiredConfig = () => Boolean(resolveHost() && resolveUser() && resolvePass());
+const createTransporter = () => {
+  const host = resolveHost();
+  const port = resolvePort();
+  const secure = port === 465;
 
-const createTransporter = () =>
-  nodemailer.createTransport({
-    host: resolveHost(),
-    port: resolvePort(),
-    secure: resolvePort() === 465,
+  if (host === 'localhost' || host === '127.0.0.1') {
+    logger.warn(
+      'MAILER_HOST is set to localhost; ensure an SMTP server is running locally or configure remote SMTP credentials.',
+    );
+  }
+
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure,
     auth: {
       user: resolveUser(),
       pass: resolvePass(),
@@ -66,45 +51,74 @@ const createTransporter = () =>
       rejectUnauthorized: false,
     },
   });
+};
 
-const normalizeRecipients = (recipients) =>
-  Array.isArray(recipients) ? recipients.join(', ') : recipients;
+export const sendEmail = (options) =>
+  new Promise((resolve, reject) => {
+    if (!hasRequiredConfig()) {
+      const error = new Error(
+        'Email service not configured: set MAILER_HOST, MAILER_USER, and MAILER_PW',
+      );
+      logger.error({ err: error.message }, 'Email send failed.');
+      reject(error);
+      return;
+    }
+
+    const transporter = createTransporter();
+    const requestedFrom = options.from || resolveFrom();
+    const senderAddress = resolveUser() || requestedFrom;
+    const replyTo =
+      requestedFrom && requestedFrom !== senderAddress ? requestedFrom : undefined;
+
+    const mailOptions = {
+      from: senderAddress,
+      to: options.to,
+      bcc: resolveBcc(),
+      subject: options.subject,
+      html: options.html,
+      text: options.text,
+      replyTo,
+    };
+
+    transporter.sendMail(mailOptions, (err, info) => {
+      if (err) {
+        logger.error({ err }, 'Email send failed.');
+        reject(err);
+        return;
+      }
+
+      logger.info({ info }, 'Email sent successfully.');
+      resolve(info);
+    });
+  });
 
 async function send(options) {
-  if (!hasRequiredConfig()) {
-    logger.warn('Email service not configured (MAILER_HOST, MAILER_USER, MAILER_PW required).');
-    return { success: false, skipped: true, error: 'Email service not configured' };
-  }
-
-  if (!options.to || !options.subject || (!options.html && !options.text)) {
-    return { success: false, error: 'Missing required email fields: to, subject, content' };
-  }
-
-  const transporter = createTransporter();
-  const senderAddress = resolveUser() || resolveFromAddress();
-  const recipients = Array.isArray(options.to) ? options.to : [options.to];
-  const mailOptions = {
-    from: options.from || resolveFromAddress(),
-    to: normalizeRecipients(recipients),
-    bcc: resolveBccAddress(options.bcc),
-    subject: options.subject,
-    html: options.html,
-    text: options.text,
-    envelope: {
-      from: senderAddress,
-      to: recipients,
-    },
-  };
-
   try {
-    const info = await transporter.sendMail(mailOptions);
-    logger.info({ to: mailOptions.to }, 'Email sent successfully.');
-    return { success: true, messageId: info.messageId };
+    await sendEmail(options);
+    return { success: true };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    logger.error({ err: message }, 'Email send failed.');
+    const message =
+      error instanceof Error ? error.message : 'Email send failed';
     return { success: false, error: message };
   }
+}
+
+async function sendStudentSubmissionAlert(payload) {
+  if (!env.studentAlertTo) {
+    logger.warn(
+      'studentAlertTo not configured; skipping student submission email.',
+    );
+    return {
+      success: false,
+      skipped: true,
+      error: 'studentAlertTo not configured',
+    };
+  }
+
+  const { html, text } = buildStudentSubmissionEmail(payload);
+  const subject = `New Student: ${payload.name}`;
+
+  return send({ to: env.studentAlertTo, subject, html, text });
 }
 
 function getStatus() {
@@ -113,27 +127,8 @@ function getStatus() {
     host: resolveHost() || 'not-set',
     port: resolvePort(),
     user: resolveUser() ? '***configured***' : 'not-set',
-    from: resolveFromAddress(),
+    from: resolveFrom() || 'not-set',
   };
-}
-
-/**
- * Notify configured recipients about a new student submission.
- * @param {StudentSubmissionEmail} payload
- * @param {{ to?: Address; subject?: string }} [overrides]
- * @returns {Promise<SendResult>}
- */
-async function sendStudentSubmissionAlert(payload, overrides = {}) {
-  const to = overrides.to || env.studentAlertTo;
-  if (!to) {
-    logger.warn('studentAlertTo not configured; skipping student submission email.');
-    return { success: false, skipped: true, error: 'studentAlertTo not configured' };
-  }
-
-  const { html, text } = buildStudentSubmissionEmail(payload);
-  const subject = overrides.subject || `New Student: ${payload.name}`;
-
-  return send({ to, subject, html, text });
 }
 
 export const emailService = {
@@ -141,5 +136,3 @@ export const emailService = {
   getStatus,
   sendStudentSubmissionAlert,
 };
-
-
