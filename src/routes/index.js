@@ -5,7 +5,7 @@ import { issues } from './issues.js';
 import { summaryReports } from './summaryReports.js';
 import { students } from './students.js';
 
-export function buildRoutes(prefix = '/api/v1'): Router {
+export function buildRoutes(prefix = '/api/v1') {
   const scoped = Router();
   scoped.use(health);
   scoped.use(flowise);

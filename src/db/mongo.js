@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import { logger } from '../utils/logger.js';
 import { env } from '../config/env.js';
 
-export async function connectMongo(): Promise<void> {
+export async function connectMongo() {
   if (!env.mongodbUri) {
     throw new Error('MONGODB_URI is required');
   }

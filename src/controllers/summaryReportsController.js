@@ -1,4 +1,3 @@
-import { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { env } from '../config/env.js';
 import { emailService } from '../services/emailService.js';
@@ -37,24 +36,58 @@ const idSchema = z.object({
   id: z.string().min(1, 'Summary report id is required'),
 });
 
-type ClientInfo = {
-  ip: string;
-  userAgent: string;
-};
+/**
+ * @typedef {Object} SummaryReportPayload
+ * @property {string} title
+ * @property {string} date
+ * @property {string} participants
+ * @property {string} scopeCovered
+ * @property {string} keyLearnings
+ * @property {string} [misconceptionsClarified]
+ * @property {string} [studentStrengths]
+ * @property {string} [gapsNextPriorities]
+ * @property {string} [suggestedNextSteps]
+ * @property {string} [questions]
+ * @property {string} [sources]
+ * @property {string} [compactRecap]
+ * @property {string} [chatId]
+ * @property {string} [sessionId]
+ * @property {string} [chatflowId]
+ */
 
-type SummaryReportEmailPayload = z.infer<typeof manualSchema> & {
-  source: string;
-  sourceId?: string;
-};
+/**
+ * @typedef {SummaryReportPayload & {source: string, sourceId?: string}} SummaryReportEmailPayload
+ */
 
-function extractClient(req: Request): ClientInfo {
-  const forwarded = req.headers['x-forwarded-for'] as string | undefined;
-  const ip = forwarded?.split(',')[0]?.trim() || req.socket.remoteAddress || '';
-  const userAgent = (req.headers['user-agent'] as string | undefined) ?? '';
+/**
+ * @typedef {Object} ClientInfo
+ * @property {string} ip
+ * @property {string} userAgent
+ */
+
+/**
+ * Extract common client metadata from the request.
+ * @param {import('express').Request} req
+ * @returns {ClientInfo}
+ */
+function extractClient(req) {
+  const forwardedHeader = req.headers['x-forwarded-for'];
+  const forwardedValue = Array.isArray(forwardedHeader)
+    ? forwardedHeader[0]
+    : forwardedHeader;
+  const forwarded = typeof forwardedValue === 'string' ? forwardedValue : undefined;
+  const ip =
+    forwarded?.split(',')[0]?.trim() ||
+    req.socket?.remoteAddress ||
+    '';
+  const userAgentHeader = req.headers['user-agent'];
+  const userAgent = Array.isArray(userAgentHeader)
+    ? userAgentHeader.join(', ')
+    : userAgentHeader ?? '';
   return { ip, userAgent };
 }
 
-function escapeHtml(input: string): string {
+function escapeHtml(input) {
   return input
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -63,10 +96,13 @@ function escapeHtml(input: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function formatField(
-  label: string,
-  value: string | undefined,
-): string | undefined {
+/**
+ * Format a report field for HTML output.
+ * @param {string} label
+ * @param {string | undefined} value
+ * @returns {string | undefined}
+ */
+function formatField(label, value) {
   if (!value) {
     return undefined;
   }
@@ -75,7 +111,13 @@ function formatField(
   return `<p><strong>${label}:</strong><br />${escaped}</p>`;
 }
 
-function formatFieldText(label: string, value: string | undefined): string | undefined {
+/**
+ * Format a report field for plain-text output.
+ * @param {string} label
+ * @param {string | undefined} value
+ * @returns {string | undefined}
+ */
+function formatFieldText(label, value) {
   if (!value) {
     return undefined;
   }
@@ -83,9 +125,12 @@ function formatFieldText(label: string, value: string | undefined): string | und
   return `${label}:
 ${value}`;
 }
-async function maybeSendReportEmail(
-  report: SummaryReportEmailPayload,
-): Promise<void> {
+
+/**
+ * Send a summary report email when configured.
+ * @param {SummaryReportEmailPayload} report
+ */
+async function maybeSendReportEmail(report) {
   if (!env.summaryReportAlertTo) {
     return;
   }
@@ -112,7 +157,7 @@ async function maybeSendReportEmail(
 
     const htmlSections = sections
       .map((section) => formatField(section.label, section.value))
-      .filter(Boolean) as string[];
+      .filter(Boolean);
 
     if (!htmlSections.length) {
       return;
@@ -120,7 +165,7 @@ async function maybeSendReportEmail(
 
     const textSections = sections
       .map((section) => formatFieldText(section.label, section.value))
-      .filter(Boolean) as string[];
+      .filter(Boolean);
 
     const result = await emailService.send({
       to: env.summaryReportAlertTo,
@@ -136,11 +181,14 @@ async function maybeSendReportEmail(
     logger.warn({ err: error }, 'Failed to send summary report alert email');
   }
 }
-export async function createSummaryReportFromFlowise(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
+
+/**
+ * Persist a Flowise-generated summary report.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
+export async function createSummaryReportFromFlowise(req, res, next) {
   try {
     const { id, payload } = flowiseSchema.parse(req.body);
     const client = extractClient(req);
@@ -159,11 +207,13 @@ export async function createSummaryReportFromFlowise(
   }
 }
 
-export async function createSummaryReport(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
+/**
+ * Persist a manually submitted summary report.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
+export async function createSummaryReport(req, res, next) {
   try {
     const body = manualSchema.parse(req.body);
     const client = extractClient(req);
@@ -181,11 +231,13 @@ export async function createSummaryReport(
   }
 }
 
-export async function listSummaryReports(
-  _req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
+/**
+ * List the most recent summary reports.
+ * @param {import('express').Request} _req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
+export async function listSummaryReports(_req, res, next) {
   try {
     const items = await SummaryReport.find()
       .sort({ createdAt: -1 })
@@ -197,11 +249,13 @@ export async function listSummaryReports(
   }
 }
 
-export async function getSummaryReport(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
+/**
+ * Retrieve a summary report by identifier.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
+export async function getSummaryReport(req, res, next) {
   try {
     const { id } = idSchema.parse(req.params);
     const doc = await SummaryReport.findById(id).lean();
@@ -216,9 +270,3 @@ export async function getSummaryReport(
     next(err);
   }
 }
-
-
-
-
-
-

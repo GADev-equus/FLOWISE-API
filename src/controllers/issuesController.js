@@ -1,19 +1,19 @@
-import { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { env } from '../config/env.js';
 import { emailService } from '../services/emailService.js';
 import { Issue } from '../models/Issue.js';
 import { logger } from '../utils/logger.js';
 
-type SimplifiedIssue = {
-  title: string;
-  description?: string;
-  date?: string;
-  chatId?: string;
-  sessionId?: string;
-  chatflowId?: string;
-  nodeId?: string;
-};
+/**
+ * @typedef {Object} SimplifiedIssue
+ * @property {string} title
+ * @property {string} [description]
+ * @property {string} [date]
+ * @property {string} [chatId]
+ * @property {string} [sessionId]
+ * @property {string} [chatflowId]
+ * @property {string} [nodeId]
+ */
 
 const flowiseSchema = z.object({
   id: z.string().optional(),
@@ -42,19 +42,40 @@ const issueIdSchema = z.object({
   id: z.string().min(1, 'Issue id is required'),
 });
 
-type ClientInfo = {
-  ip: string;
-  userAgent: string;
-};
+/**
+ * @typedef {Object} ClientInfo
+ * @property {string} ip
+ * @property {string} userAgent
+ */
 
-function extractClient(req: Request): ClientInfo {
-  const forwarded = req.headers['x-forwarded-for'] as string | undefined;
-  const ip = forwarded?.split(',')[0]?.trim() || req.socket.remoteAddress || '';
-  const userAgent = (req.headers['user-agent'] as string | undefined) ?? '';
+/**
+ * Extract client metadata from the request headers/socket.
+ * @param {import('express').Request} req
+ * @returns {ClientInfo}
+ */
+function extractClient(req) {
+  const forwardedHeader = req.headers['x-forwarded-for'];
+  const forwardedValue = Array.isArray(forwardedHeader)
+    ? forwardedHeader[0]
+    : forwardedHeader;
+  const forwarded = typeof forwardedValue === 'string' ? forwardedValue : undefined;
+  const ip =
+    forwarded?.split(',')[0]?.trim() ||
+    req.socket?.remoteAddress ||
+    '';
+  const userAgentHeader = req.headers['user-agent'];
+  const userAgent = Array.isArray(userAgentHeader)
+    ? userAgentHeader.join(', ')
+    : userAgentHeader ?? '';
   return { ip, userAgent };
 }
 
-function parseFlowiseIssuePayload(input: unknown): SimplifiedIssue {
+/**
+ * Normalise Flowise payload into a simplified issue shape.
+ * @param {unknown} input
+ * @returns {SimplifiedIssue}
+ */
+function parseFlowiseIssuePayload(input) {
   const parsed = flowiseSchema.parse(input);
   const {
     title = 'Issue',
@@ -77,7 +98,11 @@ function parseFlowiseIssuePayload(input: unknown): SimplifiedIssue {
   };
 }
 
-async function maybeSendIssueEmail(issue: SimplifiedIssue & { source: string }): Promise<void> {
+/**
+ * Send an issue alert email if alerting has been configured.
+ * @param {SimplifiedIssue & {source: string}} issue
+ */
+async function maybeSendIssueEmail(issue) {
   if (!env.issueAlertTo) {
     return;
   }
@@ -92,7 +117,7 @@ async function maybeSendIssueEmail(issue: SimplifiedIssue & { source: string }):
       issue.sessionId ? `Session ID: ${issue.sessionId}` : undefined,
       issue.chatflowId ? `Chatflow ID: ${issue.chatflowId}` : undefined,
       issue.nodeId ? `Node ID: ${issue.nodeId}` : undefined,
-    ].filter(Boolean) as string[];
+    ].filter(Boolean);
 
     if (!lines.length) {
       return;
@@ -115,7 +140,13 @@ async function maybeSendIssueEmail(issue: SimplifiedIssue & { source: string }):
     logger.warn({ err: error }, 'Failed to send issue alert email');
   }
 }
-function buildIssueDocument(issue: SimplifiedIssue, source: string, client: ClientInfo) {
+/**
+ * Prepare Mongo document payload for an issue.
+ * @param {SimplifiedIssue} issue
+ * @param {string} source
+ * @param {ClientInfo} client
+ */
+function buildIssueDocument(issue, source, client) {
   const baseDocument = {
     source,
     title: issue.title,
@@ -132,11 +163,13 @@ function buildIssueDocument(issue: SimplifiedIssue, source: string, client: Clie
     ...(issue.nodeId !== undefined ? { nodeId: issue.nodeId } : {}),
   };
 }
-export async function createIssueFromFlowise(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
+/**
+ * Handle Flowise webhook submissions.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
+export async function createIssueFromFlowise(req, res, next) {
   try {
     const simplified = parseFlowiseIssuePayload(req.body);
     const client = extractClient(req);
@@ -148,7 +181,13 @@ export async function createIssueFromFlowise(
   }
 }
 
-export async function createIssue(req: Request, res: Response, next: NextFunction): Promise<void> {
+/**
+ * Handle manual issue submissions.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
+export async function createIssue(req, res, next) {
   try {
     const body = manualSchema.parse(req.body);
     const client = extractClient(req);
@@ -160,7 +199,13 @@ export async function createIssue(req: Request, res: Response, next: NextFunctio
   }
 }
 
-export async function listIssues(_req: Request, res: Response, next: NextFunction): Promise<void> {
+/**
+ * List issues in reverse chronological order.
+ * @param {import('express').Request} _req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
+export async function listIssues(_req, res, next) {
   try {
     const list = await Issue.find().sort({ createdAt: -1 }).lean();
     res.json(list);
@@ -169,7 +214,13 @@ export async function listIssues(_req: Request, res: Response, next: NextFunctio
   }
 }
 
-export async function getIssue(req: Request, res: Response, next: NextFunction): Promise<void> {
+/**
+ * Fetch a single issue by id.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
+export async function getIssue(req, res, next) {
   try {
     const { id } = issueIdSchema.parse(req.params);
     const doc = await Issue.findById(id).lean();

@@ -1,9 +1,9 @@
 import 'dotenv/config';
 
-const num = (value: string | undefined, fallback: number): number =>
+const num = (value, fallback) =>
   value ? Number(value) : fallback;
 
-const parseOrigins = (origins: string | undefined): string[] =>
+const parseOrigins = (origins) =>
   (origins ?? '')
     .split(',')
     .map((origin) => origin.trim())

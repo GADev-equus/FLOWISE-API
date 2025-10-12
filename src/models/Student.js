@@ -1,6 +1,6 @@
 import { Schema, model } from 'mongoose';
 
-const isEmail = (value: string): boolean =>
+const isEmail = (value) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
 const enrolmentSchema = new Schema(
@@ -32,7 +32,7 @@ const guardianSchema = new Schema(
       lowercase: true,
       trim: true,
       validate: {
-        validator(value: string): boolean {
+        validator(value) {
           return value === '' || isEmail(value);
         },
         message: 'Please provide a valid guardian email address',
@@ -74,8 +74,6 @@ const studentSchema = new Schema(
   },
   { timestamps: true, collection: 'students' }
 );
-
-studentSchema.index({ email: 1 }, { unique: true });
 
 export const Student = model('Student', studentSchema);
 

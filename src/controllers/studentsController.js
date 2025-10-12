@@ -1,6 +1,4 @@
-import { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
-import { env } from '../config/env.js';
 import { emailService } from '../services/emailService.js';
 import { Student } from '../models/Student.js';
 import { logger } from '../utils/logger.js';
@@ -59,13 +57,13 @@ const manualSchema = z.preprocess((data) => {
     return data;
   }
 
-  const clone = { ...(data as Record<string, unknown>) };
+  const clone = { ...data };
   const guardian = clone.guardian;
 
   if (typeof guardian === 'string') {
     clone.guardian = { email: guardian.trim() };
   } else if (guardian && typeof guardian === 'object') {
-    const candidate = guardian as Record<string, unknown>;
+    const candidate = guardian;
     const name = typeof candidate.name === 'string' ? candidate.name.trim() : candidate.name;
     const email = typeof candidate.email === 'string' ? candidate.email.trim() : candidate.email;
     clone.guardian = {
@@ -87,35 +85,79 @@ const studentIdSchema = z.object({
   id: z.string().min(1, 'Student id is required'),
 });
 
-type ManualStudent = z.infer<typeof manualSchema>;
-type FlowiseStudent = z.infer<typeof flowiseSchema>;
+/**
+ * @typedef {Object} GuardianInfo
+ * @property {string} name
+ * @property {string} email
+ */
 
-type ClientInfo = {
-  ip: string;
-  userAgent: string;
-};
+/**
+ * @typedef {Object} Enrolment
+ * @property {string} subject
+ * @property {string} examBody
+ * @property {string} level
+ * @property {string[]} [books]
+ * @property {string[]} [examDates]
+ */
 
-type StudentEmailPayload = NormalizedStudent & {
-  source: 'manual' | 'flowise';
-  sourceId?: string;
-};
+/**
+ * @typedef {Object} NormalizedStudent
+ * @property {string} name
+ * @property {string} nickname
+ * @property {string} email
+ * @property {number} [age]
+ * @property {GuardianInfo} guardian
+ * @property {Enrolment[]} enrolments
+ * @property {string} [preferredColourForDyslexia]
+ * @property {string} [chatId]
+ * @property {string} [sessionId]
+ * @property {string} [chatflowId]
+ */
 
-type DuplicateKeyError = {
-  code: number;
-  keyValue?: Record<string, unknown>;
-  keyPattern?: Record<string, unknown>;
-};
+/**
+ * @typedef {NormalizedStudent & {source: 'manual' | 'flowise', sourceId?: string}} StudentEmailPayload
+ */
 
-type NormalizedStudent = ManualStudent;
+/**
+ * @typedef {Object} ClientInfo
+ * @property {string} ip
+ * @property {string} userAgent
+ */
 
-function extractClient(req: Request): ClientInfo {
-  const forwarded = req.headers['x-forwarded-for'] as string | undefined;
-  const ip = forwarded?.split(',')[0]?.trim() || req.socket.remoteAddress || '';
-  const userAgent = (req.headers['user-agent'] as string | undefined) ?? '';
+/**
+ * @typedef {Object} DuplicateKeyError
+ * @property {number} code
+ * @property {Record<string, any>} [keyValue]
+ * @property {Record<string, any>} [keyPattern]
+ */
+
+/**
+ * Extract client metadata from the request headers/socket.
+ * @param {import('express').Request} req
+ * @returns {ClientInfo}
+ */
+function extractClient(req) {
+  const forwardedHeader = req.headers['x-forwarded-for'];
+  const forwardedValue = Array.isArray(forwardedHeader)
+    ? forwardedHeader[0]
+    : forwardedHeader;
+  const forwarded = typeof forwardedValue === 'string' ? forwardedValue : undefined;
+  const ip =
+    forwarded?.split(',')[0]?.trim() ||
+    req.socket?.remoteAddress ||
+    '';
+  const userAgentHeader = req.headers['user-agent'];
+  const userAgent = Array.isArray(userAgentHeader)
+    ? userAgentHeader.join(', ')
+    : userAgentHeader ?? '';
   return { ip, userAgent };
 }
 
-async function maybeSendStudentEmail(student: StudentEmailPayload): Promise<void> {
+/**
+ * Optionally send student submission email notifications.
+ * @param {StudentEmailPayload} student
+ */
+async function maybeSendStudentEmail(student) {
   try {
     const result = await emailService.sendStudentSubmissionAlert({
       name: student.name,
@@ -149,16 +191,25 @@ async function maybeSendStudentEmail(student: StudentEmailPayload): Promise<void
   }
 }
 
-function isDuplicateKeyError(error: unknown): error is DuplicateKeyError {
-  return Boolean(
-    error &&
-      typeof error === 'object' &&
-      'code' in error &&
-      (error as Partial<DuplicateKeyError>).code === 11000
-  );
+/**
+ * Determine whether an error is a Mongo duplicate key error.
+ * @param {unknown} error
+ * @returns {error is DuplicateKeyError}
+ */
+function isDuplicateKeyError(error) {
+  if (!error || typeof error !== 'object' || !('code' in error)) {
+    return false;
+  }
+
+  const { code } = /** @type {{ code?: unknown }} */ (error);
+  return code === 11000;
 }
 
-function resolveDuplicateField(error: DuplicateKeyError): { code: string; message: string } {
+/**
+ * Resolve duplicate key error details to an API response.
+ * @param {DuplicateKeyError} error
+ */
+function resolveDuplicateField(error) {
   const keyValue = error.keyValue ?? {};
   const keyPattern = error.keyPattern ?? {};
   const key = Object.keys(keyValue)[0] ?? Object.keys(keyPattern)[0] ?? 'email';
@@ -176,7 +227,12 @@ function resolveDuplicateField(error: DuplicateKeyError): { code: string; messag
   };
 }
 
-function handleDuplicateKeyError(res: Response, error: unknown): boolean {
+/**
+ * Handle duplicate key errors during student creation.
+ * @param {import('express').Response} res
+ * @param {unknown} error
+ */
+function handleDuplicateKeyError(res, error) {
   if (!isDuplicateKeyError(error)) {
     return false;
   }
@@ -186,7 +242,12 @@ function handleDuplicateKeyError(res: Response, error: unknown): boolean {
   return true;
 }
 
-function normalizeStudentPayload(input: ManualStudent): NormalizedStudent {
+/**
+ * Normalize fields for persistence and downstream use.
+ * @param {NormalizedStudent} input
+ * @returns {NormalizedStudent}
+ */
+function normalizeStudentPayload(input) {
   const trimmedNickname = input.nickname?.trim() ?? '';
   const normalizedGuardian = {
     name: input.guardian.name.trim(),
@@ -198,7 +259,7 @@ function normalizeStudentPayload(input: ManualStudent): NormalizedStudent {
     subject: enrolment.subject.trim(),
     books: enrolment.books?.map((book) => book.trim()).filter(Boolean) ?? [],
     examDates: enrolment.examDates?.map((date) => date.trim()).filter(Boolean) ?? [],
-  })) as NormalizedStudent['enrolments'];
+  }));
 
   return {
     ...input,
@@ -214,7 +275,12 @@ function normalizeStudentPayload(input: ManualStudent): NormalizedStudent {
   };
 }
 
-async function hasEmailConflicts(payload: NormalizedStudent): Promise<{ code: string; message: string } | null> {
+/**
+ * Check whether the incoming student collides with existing emails.
+ * @param {NormalizedStudent} payload
+ * @returns {Promise<{ code: string; message: string } | null>}
+ */
+async function hasEmailConflicts(payload) {
   if (await Student.exists({ email: payload.email })) {
     return {
       code: 'STUDENT_EMAIL_EXISTS',
@@ -235,10 +301,12 @@ async function hasEmailConflicts(payload: NormalizedStudent): Promise<{ code: st
   return null;
 }
 
-async function respondIfEmailConflict(
-  res: Response,
-  payload: NormalizedStudent,
-): Promise<boolean> {
+/**
+ * Respond with 409 if there is an email conflict.
+ * @param {import('express').Response} res
+ * @param {NormalizedStudent} payload
+ */
+async function respondIfEmailConflict(res, payload) {
   const conflict = await hasEmailConflicts(payload);
   if (!conflict) {
     return false;
@@ -248,11 +316,13 @@ async function respondIfEmailConflict(
   return true;
 }
 
-export async function createStudent(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
+/**
+ * Create a student from a manual submission.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
+export async function createStudent(req, res, next) {
   try {
     const parsed = manualSchema.parse(req.body);
     const body = normalizeStudentPayload(parsed);
@@ -278,13 +348,15 @@ export async function createStudent(
   }
 }
 
-export async function createStudentFromFlowise(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
+/**
+ * Create a student from a Flowise webhook payload.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
+export async function createStudentFromFlowise(req, res, next) {
   try {
-    const { id, payload }: FlowiseStudent = flowiseSchema.parse(req.body);
+    const { id, payload } = flowiseSchema.parse(req.body);
     const body = normalizeStudentPayload(payload);
     const client = extractClient(req);
 
@@ -309,11 +381,13 @@ export async function createStudentFromFlowise(
   }
 }
 
-export async function listStudents(
-  _req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
+/**
+ * List students ordered by creation date.
+ * @param {import('express').Request} _req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
+export async function listStudents(_req, res, next) {
   try {
     const items = await Student.find().sort({ createdAt: -1 }).lean();
     res.json(items);
@@ -322,11 +396,13 @@ export async function listStudents(
   }
 }
 
-export async function getStudent(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
+/**
+ * Retrieve a single student by identifier.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
+export async function getStudent(req, res, next) {
   try {
     const { id } = studentIdSchema.parse(req.params);
     const doc = await Student.findById(id).lean();
@@ -341,15 +417,3 @@ export async function getStudent(
     next(error);
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-

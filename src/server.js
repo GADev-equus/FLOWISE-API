@@ -3,13 +3,13 @@ import { env } from './config/env.js';
 import { connectMongo } from './db/mongo.js';
 import { logger } from './utils/logger.js';
 
-const buildApiUrl = (base: string, prefix: string): string => {
+const buildApiUrl = (base, prefix) => {
   const normalizedBase = base.endsWith('/') ? base.slice(0, -1) : base;
   const normalizedPrefix = prefix.startsWith('/') ? prefix : `/${prefix}`;
   return `${normalizedBase}${normalizedPrefix}`;
 };
 
-async function main(): Promise<void> {
+async function main() {
   await connectMongo();
 
   const deploymentUrl =

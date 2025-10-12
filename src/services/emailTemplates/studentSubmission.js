@@ -1,30 +1,22 @@
 import { env } from '../../config/env.js';
 
-export type StudentSubmissionEmail = {
-  name: string;
-  nickname?: string;
-  email: string;
-  age?: number;
-  guardian: {
-    name?: string;
-    email?: string;
-  };
-  enrolments: Array<{
-    subject: string;
-    examBody: string;
-    level: string;
-    books?: string[];
-    examDates?: string[];
-  }>;
-  preferredColourForDyslexia?: string;
-  chatId?: string;
-  sessionId?: string;
-  chatflowId?: string;
-  source: 'manual' | 'flowise';
-  sourceId?: string;
-};
+/**
+ * @typedef {Object} StudentSubmissionEmail
+ * @property {string} name
+ * @property {string} [nickname]
+ * @property {string} email
+ * @property {number} [age]
+ * @property {{ name?: string; email?: string }} guardian
+ * @property {Array<{ subject: string; examBody: string; level: string; books?: string[]; examDates?: string[] }>} enrolments
+ * @property {string} [preferredColourForDyslexia]
+ * @property {string} [chatId]
+ * @property {string} [sessionId]
+ * @property {string} [chatflowId]
+ * @property {'manual' | 'flowise'} source
+ * @property {string} [sourceId]
+ */
 
-const escapeHtml = (value: string): string =>
+const escapeHtml = (value) =>
   value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -32,7 +24,7 @@ const escapeHtml = (value: string): string =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-const formatList = (label: string, items: string[] | undefined): string => {
+const formatList = (label, items) => {
   if (!items || items.length === 0) {
     return '';
   }
@@ -41,7 +33,7 @@ const formatList = (label: string, items: string[] | undefined): string => {
   return `<p><strong>${label}:</strong></p><ul>${content}</ul>`;
 };
 
-const formatListText = (label: string, items: string[] | undefined): string => {
+const formatListText = (label, items) => {
   if (!items || items.length === 0) {
     return '';
   }
@@ -50,16 +42,19 @@ const formatListText = (label: string, items: string[] | undefined): string => {
   return `${label}:\n${content}`;
 };
 
-const sanitizeNumber = (value: number | undefined): string | undefined => {
+const sanitizeNumber = (value) => {
   if (value === undefined || Number.isNaN(value)) {
     return undefined;
   }
   return String(value);
 };
 
-export const buildStudentSubmissionEmail = (
-  payload: StudentSubmissionEmail,
-): { html: string; text: string } => {
+/**
+ * Build HTML and text versions of a student submission email.
+ * @param {StudentSubmissionEmail} payload
+ * @returns {{ html: string; text: string }}
+ */
+export const buildStudentSubmissionEmail = (payload) => {
   const guardianName = payload.guardian.name?.trim() || 'Not provided';
   const guardianEmail = payload.guardian.email?.trim() || 'Not provided';
   const nickname = payload.nickname?.trim();

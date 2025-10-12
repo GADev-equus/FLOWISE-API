@@ -1,18 +1,13 @@
-import { NextFunction, Request, Response } from 'express';
 import { ZodError } from 'zod';
 
-type ErrorWithExtras = Error & {
-  status?: number;
-  code?: string;
-  details?: unknown;
-};
-
-export function errorHandler(
-  err: ErrorWithExtras,
-  _req: Request,
-  res: Response,
-  _next: NextFunction
-): void {
+/**
+ * Express error handler that normalises structured errors.
+ * @param {Error & {status?: number, code?: string, details?: unknown}} err
+ * @param {import('express').Request} _req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} _next
+ */
+export function errorHandler(err, _req, res, _next) {
   if (err instanceof ZodError) {
     res.status(400).json({
       status: 400,
