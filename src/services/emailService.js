@@ -70,14 +70,6 @@ const createTransporter = () =>
 const normalizeRecipients = (recipients) =>
   Array.isArray(recipients) ? recipients.join(', ') : recipients;
 
-const normalizeEnvelopeRecipients = (recipients) =>
-  Array.isArray(recipients) ? recipients : normalizeRecipients(recipients);
-
-/**
- * Dispatch an email using the configured transport.
- * @param {SendEmailOptions} options
- * @returns {Promise<SendResult>}
- */
 async function send(options) {
   if (!hasRequiredConfig()) {
     logger.warn('Email service not configured (MAILER_HOST, MAILER_USER, MAILER_PW required).');
@@ -90,20 +82,18 @@ async function send(options) {
 
   const transporter = createTransporter();
   const senderAddress = resolveUser() || resolveFromAddress();
-  const fromAddress = options.from || resolveFromAddress();
+  const recipients = Array.isArray(options.to) ? options.to : [options.to];
   const mailOptions = {
-    from: fromAddress,
-    to: normalizeRecipients(options.to),
+    from: options.from || resolveFromAddress(),
+    to: normalizeRecipients(recipients),
     bcc: resolveBccAddress(options.bcc),
     subject: options.subject,
     html: options.html,
     text: options.text,
     envelope: {
       from: senderAddress,
-      to: normalizeEnvelopeRecipients(options.to),
+      to: recipients,
     },
-    replyTo: options.from ? options.from : undefined,
-    sender: senderAddress,
   };
 
   try {
