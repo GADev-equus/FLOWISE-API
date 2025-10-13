@@ -28,7 +28,7 @@ const guardianSchema = new Schema(
     email: {
       type: String,
       default: '',
-      unique: true,
+      index: true,
       lowercase: true,
       trim: true,
       validate: {

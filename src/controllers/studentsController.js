@@ -288,16 +288,6 @@ async function hasEmailConflicts(payload) {
     };
   }
 
-  if (payload.guardian.email) {
-    const guardianExists = await Student.exists({ 'guardian.email': payload.guardian.email });
-    if (guardianExists) {
-      return {
-        code: 'STUDENT_GUARDIAN_EMAIL_EXISTS',
-        message: 'Guardian email is already associated with another student.',
-      };
-    }
-  }
-
   return null;
 }
 
