@@ -17,6 +17,14 @@ export const env = {
   corsOrigins: parseOrigins(process.env.CORS_ORIGINS),
   resendKey: process.env.RESEND_API_KEY ?? '',
   mailFrom: process.env.MAIL_FROM ?? '',
+  mailReplyTo: process.env.MAIL_REPLY_TO ?? '',
+  mailReturnPath: process.env.MAIL_RETURN_PATH ?? '',
+  mailBcc:
+    process.env.MAIL_BCC ??
+    process.env.MAILER_BCC ??
+    process.env.EMAIL_BCC ??
+    '',
+  mailTagCategory: process.env.MAIL_TAG_CATEGORY ?? '',
   emailHost: process.env.EMAIL_HOST ?? '',
   emailPort: num(process.env.EMAIL_PORT, 587),
   emailUser: process.env.EMAIL_USER ?? '',
