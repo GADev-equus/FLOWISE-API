@@ -408,17 +408,60 @@ export async function getStudent(req, res, next) {
     const doc = await Student.findById(id).lean();
 
     if (!doc) {
-      res
-        .status(404)
-        .json({
-          status: 404,
-          code: 'STUDENT_NOT_FOUND',
-          message: 'Student not found',
-        });
+      res.status(404).json({
+        status: 404,
+        code: 'STUDENT_NOT_FOUND',
+        message: 'Student not found',
+      });
       return;
     }
 
     res.json(doc);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Verify if student email exists in database.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
+export async function verifyEmail(req, res, next) {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      res.status(400).json({
+        success: false,
+        message: 'Email is required',
+      });
+      return;
+    }
+
+    const trimmedEmail = email.trim().toLowerCase();
+
+    // Check if student exists
+    const student = await Student.findOne({ email: trimmedEmail }).lean();
+
+    if (!student) {
+      res.status(404).json({
+        success: false,
+        message: 'Email not found in our records',
+      });
+      return;
+    }
+
+    // Return student info (without sensitive data)
+    res.status(200).json({
+      success: true,
+      data: {
+        email: student.email,
+        name: student.name,
+        nickname: student.nickname || '',
+      },
+    });
   } catch (error) {
     next(error);
   }
