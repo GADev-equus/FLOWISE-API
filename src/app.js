@@ -24,7 +24,7 @@ const defaultCorsOrigins = [
 ];
 
 const allowedOrigins = Array.from(
-  new Set([...(env.corsOrigins ?? []), ...defaultCorsOrigins])
+  new Set([...(env.corsOrigins ?? []), ...defaultCorsOrigins]),
 );
 
 app.use(
@@ -37,7 +37,7 @@ app.use(
     maxAge: 86400, // 24 hours
     preflightContinue: false,
     optionsSuccessStatus: 204,
-  })
+  }),
 );
 
 // Logging
@@ -45,7 +45,7 @@ app.use(
   pinoHttp({
     logger,
     autoLogging: true,
-  })
+  }),
 );
 
 // Metrics
