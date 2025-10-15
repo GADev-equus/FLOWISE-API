@@ -7,7 +7,7 @@ import { env } from '../../config/env.js';
  * @property {string} email
  * @property {number} [age]
  * @property {{ name?: string; email?: string }} guardian
- * @property {Array<{ subject: string; examBody: string; level: string; books?: string[]; examDates?: string[] }>} enrolments
+ * @property {Array<{ subject: string; country: string; examBody: string; level: string; books?: string[]; examDates?: string[] }>} enrolments
  * @property {string} [preferredColourForDyslexia]
  * @property {string} [chatId]
  * @property {string} [sessionId]
@@ -64,8 +64,10 @@ export const buildStudentSubmissionEmail = (payload) => {
   const enrolmentsHtml = payload.enrolments
     .map((enrolment, index) => {
       const header = `${escapeHtml(enrolment.subject)} &middot; ${escapeHtml(
-        enrolment.examBody,
-      )} (${escapeHtml(enrolment.level)})`;
+        enrolment.country,
+      )} &middot; ${escapeHtml(enrolment.examBody)} (${escapeHtml(
+        enrolment.level,
+      )})`;
       const books = formatList('Study resources', enrolment.books);
       const examDates = formatList('Planned exam dates', enrolment.examDates);
       return `
@@ -80,9 +82,14 @@ export const buildStudentSubmissionEmail = (payload) => {
 
   const enrolmentsText = payload.enrolments
     .map((enrolment, index) => {
-      const header = `Enrolment ${index + 1}: ${enrolment.subject} - ${enrolment.examBody} (${enrolment.level})`;
+      const header = `Enrolment ${index + 1}: ${enrolment.subject} - ${
+        enrolment.country
+      } - ${enrolment.examBody} (${enrolment.level})`;
       const books = formatListText('Study resources', enrolment.books);
-      const examDates = formatListText('Planned exam dates', enrolment.examDates);
+      const examDates = formatListText(
+        'Planned exam dates',
+        enrolment.examDates,
+      );
       return [header, books, examDates].filter(Boolean).join('\n');
     })
     .join('\n\n');
@@ -93,10 +100,20 @@ export const buildStudentSubmissionEmail = (payload) => {
 
   const metaHtml = [
     age ? `<p><strong>Age:</strong> ${escapeHtml(age)}</p>` : '',
-    preferredColour ? `<p><strong>Preferred colour:</strong> ${escapeHtml(preferredColour)}</p>` : '',
-    payload.chatId ? `<p><strong>Chat ID:</strong> ${escapeHtml(payload.chatId)}</p>` : '',
-    payload.sessionId ? `<p><strong>Session ID:</strong> ${escapeHtml(payload.sessionId)}</p>` : '',
-    payload.chatflowId ? `<p><strong>Chatflow ID:</strong> ${escapeHtml(payload.chatflowId)}</p>` : '',
+    preferredColour
+      ? `<p><strong>Preferred colour:</strong> ${escapeHtml(
+          preferredColour,
+        )}</p>`
+      : '',
+    payload.chatId
+      ? `<p><strong>Chat ID:</strong> ${escapeHtml(payload.chatId)}</p>`
+      : '',
+    payload.sessionId
+      ? `<p><strong>Session ID:</strong> ${escapeHtml(payload.sessionId)}</p>`
+      : '',
+    payload.chatflowId
+      ? `<p><strong>Chatflow ID:</strong> ${escapeHtml(payload.chatflowId)}</p>`
+      : '',
   ]
     .filter(Boolean)
     .join('\n');
@@ -117,18 +134,24 @@ export const buildStudentSubmissionEmail = (payload) => {
     <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto;">
       <h1 style="font-size: 20px;">New student submission received</h1>
       <p><strong>Name:</strong> ${escapeHtml(payload.name)}</p>
-      <p><strong>Nickname:</strong> ${escapeHtml(nickname || 'Not provided')}</p>
-      <p><strong>Email:</strong> <a href="mailto:${escapeHtml(payload.email)}">${escapeHtml(
+      <p><strong>Nickname:</strong> ${escapeHtml(
+        nickname || 'Not provided',
+      )}</p>
+      <p><strong>Email:</strong> <a href="mailto:${escapeHtml(
         payload.email,
-      )}</a></p>
-      <p><strong>Guardian:</strong> ${escapeHtml(guardianName)} (${escapeHtml(guardianEmail)})</p>
+      )}">${escapeHtml(payload.email)}</a></p>
+      <p><strong>Guardian:</strong> ${escapeHtml(guardianName)} (${escapeHtml(
+    guardianEmail,
+  )})</p>
       ${metaHtml}
       <p><strong>Source:</strong> ${sourceDetails}</p>
       <hr style="margin: 24px 0;" />
       ${enrolmentsHtml}
       <hr style="margin: 24px 0;" />
       <p style="font-size: 12px; color: #555;">
-        Environment: ${escapeHtml(env.nodeEnv)} | Sent at ${escapeHtml(timestamp)}
+        Environment: ${escapeHtml(env.nodeEnv)} | Sent at ${escapeHtml(
+    timestamp,
+  )}
       </p>
     </div>
   `;

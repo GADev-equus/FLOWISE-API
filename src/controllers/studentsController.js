@@ -4,9 +4,10 @@ import { Student } from '../models/Student.js';
 import { logger } from '../utils/logger.js';
 
 const enrolmentSchema = z.object({
-  subject: z.string().min(1),
-  examBody: z.enum(['AQA', 'EdExcel', 'OCR', 'WJEC', 'CIE', 'Other']),
-  level: z.enum(['GCSE', 'AS', 'A-Level', 'IGCSE', 'IB', 'Other']),
+  subject: z.string().min(1, 'Subject is required'),
+  country: z.string().min(1, 'Country is required'),
+  examBody: z.string().min(1, 'Exam body is required'),
+  level: z.string().min(1, 'Level is required'),
   books: z.array(z.string()).optional().default([]),
   examDates: z.array(z.string()).optional().default([]),
 });
@@ -64,8 +65,14 @@ const manualSchema = z.preprocess((data) => {
     clone.guardian = { email: guardian.trim() };
   } else if (guardian && typeof guardian === 'object') {
     const candidate = guardian;
-    const name = typeof candidate.name === 'string' ? candidate.name.trim() : candidate.name;
-    const email = typeof candidate.email === 'string' ? candidate.email.trim() : candidate.email;
+    const name =
+      typeof candidate.name === 'string'
+        ? candidate.name.trim()
+        : candidate.name;
+    const email =
+      typeof candidate.email === 'string'
+        ? candidate.email.trim()
+        : candidate.email;
     clone.guardian = {
       ...candidate,
       ...(name !== undefined ? { name } : {}),
@@ -94,6 +101,7 @@ const studentIdSchema = z.object({
 /**
  * @typedef {Object} Enrolment
  * @property {string} subject
+ * @property {string} country
  * @property {string} examBody
  * @property {string} level
  * @property {string[]} [books]
@@ -141,11 +149,10 @@ function extractClient(req) {
   const forwardedValue = Array.isArray(forwardedHeader)
     ? forwardedHeader[0]
     : forwardedHeader;
-  const forwarded = typeof forwardedValue === 'string' ? forwardedValue : undefined;
+  const forwarded =
+    typeof forwardedValue === 'string' ? forwardedValue : undefined;
   const ip =
-    forwarded?.split(',')[0]?.trim() ||
-    req.socket?.remoteAddress ||
-    '';
+    forwarded?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
   const userAgentHeader = req.headers['user-agent'];
   const userAgent = Array.isArray(userAgentHeader)
     ? userAgentHeader.join(', ')
@@ -170,6 +177,7 @@ async function maybeSendStudentEmail(student) {
       },
       enrolments: student.enrolments.map((enrolment) => ({
         subject: enrolment.subject,
+        country: enrolment.country,
         examBody: enrolment.examBody,
         level: enrolment.level,
         books: enrolment.books,
@@ -257,8 +265,10 @@ function normalizeStudentPayload(input) {
   const enrolments = input.enrolments.map((enrolment) => ({
     ...enrolment,
     subject: enrolment.subject.trim(),
+    country: enrolment.country.trim(),
     books: enrolment.books?.map((book) => book.trim()).filter(Boolean) ?? [],
-    examDates: enrolment.examDates?.map((date) => date.trim()).filter(Boolean) ?? [],
+    examDates:
+      enrolment.examDates?.map((date) => date.trim()).filter(Boolean) ?? [],
   }));
 
   return {
@@ -398,7 +408,13 @@ export async function getStudent(req, res, next) {
     const doc = await Student.findById(id).lean();
 
     if (!doc) {
-      res.status(404).json({ status: 404, code: 'STUDENT_NOT_FOUND', message: 'Student not found' });
+      res
+        .status(404)
+        .json({
+          status: 404,
+          code: 'STUDENT_NOT_FOUND',
+          message: 'Student not found',
+        });
       return;
     }
 

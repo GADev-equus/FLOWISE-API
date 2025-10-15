@@ -1,25 +1,17 @@
 import { Schema, model } from 'mongoose';
 
-const isEmail = (value) =>
-  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
 const enrolmentSchema = new Schema(
   {
     subject: { type: String, required: true },
-    examBody: {
-      type: String,
-      enum: ['AQA', 'EdExcel', 'OCR', 'WJEC', 'CIE', 'Other'],
-      required: true,
-    },
-    level: {
-      type: String,
-      enum: ['GCSE', 'AS', 'A-Level', 'IGCSE', 'IB', 'Other'],
-      required: true,
-    },
+    country: { type: String, required: true },
+    examBody: { type: String, required: true },
+    level: { type: String, required: true },
     books: { type: [String], default: [] },
     examDates: { type: [String], default: [] },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const guardianSchema = new Schema(
@@ -39,7 +31,7 @@ const guardianSchema = new Schema(
       },
     },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const studentSchema = new Schema(
@@ -72,11 +64,7 @@ const studentSchema = new Schema(
       userAgent: { type: String, default: '' },
     },
   },
-  { timestamps: true, collection: 'students' }
+  { timestamps: true, collection: 'students' },
 );
 
 export const Student = model('Student', studentSchema);
-
-
-
-
