@@ -457,6 +457,7 @@ export async function verifyEmail(req, res, next) {
     res.status(200).json({
       success: true,
       data: {
+        _id: student._id,
         email: student.email,
         name: student.name,
         nickname: student.nickname || '',
