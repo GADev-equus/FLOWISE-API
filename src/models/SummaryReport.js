@@ -16,6 +16,8 @@ const summaryReportSchema = new Schema(
     questions: { type: String, default: '' },
     sources: { type: String, default: '' },
     compactRecap: { type: String, default: '' },
+    name: { type: String, default: '' },
+    email: { type: String, default: '' },
     chatId: { type: String, default: '' },
     sessionId: { type: String, default: '' },
     chatflowId: { type: String, default: '' },
@@ -24,7 +26,7 @@ const summaryReportSchema = new Schema(
       userAgent: { type: String, default: '' },
     },
   },
-  { timestamps: true, collection: 'summary_reports' }
+  { timestamps: true, collection: 'summary_reports' },
 );
 
 export const SummaryReport = model('SummaryReport', summaryReportSchema);

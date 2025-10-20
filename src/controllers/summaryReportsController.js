@@ -17,6 +17,8 @@ const baseReportSchema = z.object({
   questions: z.string().optional(),
   sources: z.string().optional(),
   compactRecap: z.string().optional(),
+  name: z.string().optional(),
+  email: z.string().optional(),
 });
 
 const metadataSchema = z.object({
@@ -50,6 +52,8 @@ const idSchema = z.object({
  * @property {string} [questions]
  * @property {string} [sources]
  * @property {string} [compactRecap]
+ * @property {string} [name]
+ * @property {string} [email]
  * @property {string} [chatId]
  * @property {string} [sessionId]
  * @property {string} [chatflowId]
@@ -75,11 +79,10 @@ function extractClient(req) {
   const forwardedValue = Array.isArray(forwardedHeader)
     ? forwardedHeader[0]
     : forwardedHeader;
-  const forwarded = typeof forwardedValue === 'string' ? forwardedValue : undefined;
+  const forwarded =
+    typeof forwardedValue === 'string' ? forwardedValue : undefined;
   const ip =
-    forwarded?.split(',')[0]?.trim() ||
-    req.socket?.remoteAddress ||
-    '';
+    forwarded?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
   const userAgentHeader = req.headers['user-agent'];
   const userAgent = Array.isArray(userAgentHeader)
     ? userAgentHeader.join(', ')
@@ -138,18 +141,28 @@ async function maybeSendReportEmail(report) {
   try {
     const subject = `Summary Report: ${report.title}`;
     const sections = [
-      { label: 'Source', value: report.sourceId ? `${report.source} (${report.sourceId})` : report.source },
+      {
+        label: 'Source',
+        value: report.sourceId
+          ? `${report.source} (${report.sourceId})`
+          : report.source,
+      },
       { label: 'Date', value: report.date },
       { label: 'Participants', value: report.participants },
       { label: 'Scope Covered', value: report.scopeCovered },
       { label: 'Key Learnings', value: report.keyLearnings },
-      { label: 'Misconceptions Clarified', value: report.misconceptionsClarified },
+      {
+        label: 'Misconceptions Clarified',
+        value: report.misconceptionsClarified,
+      },
       { label: 'Student Strengths', value: report.studentStrengths },
       { label: 'Gaps / Next Priorities', value: report.gapsNextPriorities },
       { label: 'Suggested Next Steps', value: report.suggestedNextSteps },
       { label: 'Questions', value: report.questions },
       { label: 'Sources', value: report.sources },
       { label: 'Compact Recap', value: report.compactRecap },
+      { label: 'Name', value: report.name },
+      { label: 'Email', value: report.email },
       { label: 'Chat ID', value: report.chatId },
       { label: 'Session ID', value: report.sessionId },
       { label: 'Chatflow ID', value: report.chatflowId },
@@ -175,7 +188,10 @@ async function maybeSendReportEmail(report) {
     });
 
     if (!result.success && !result.skipped) {
-      logger.warn({ err: result.error }, 'Failed to send summary report alert email');
+      logger.warn(
+        { err: result.error },
+        'Failed to send summary report alert email',
+      );
     }
   } catch (error) {
     logger.warn({ err: error }, 'Failed to send summary report alert email');
