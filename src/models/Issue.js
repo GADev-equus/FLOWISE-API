@@ -13,6 +13,8 @@ const issueSchema = new Schema(
       enum: ['open', 'triaged', 'in_progress', 'resolved', 'closed'],
       default: 'open',
     },
+    name: { type: String, default: '' },
+    email: { type: String, default: '' },
     chatId: { type: String, default: '' },
     sessionId: { type: String, default: '' },
     chatflowId: { type: String, default: '' },
@@ -22,7 +24,7 @@ const issueSchema = new Schema(
       userAgent: { type: String, default: '' },
     },
   },
-  { timestamps: true, collection: 'issues' }
+  { timestamps: true, collection: 'issues' },
 );
 
 export const Issue = model('Issue', issueSchema);

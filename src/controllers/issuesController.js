@@ -9,6 +9,8 @@ import { logger } from '../utils/logger.js';
  * @property {string} title
  * @property {string} [description]
  * @property {string} [date]
+ * @property {string} [name]
+ * @property {string} [email]
  * @property {string} [chatId]
  * @property {string} [sessionId]
  * @property {string} [chatflowId]
@@ -21,6 +23,8 @@ const flowiseSchema = z.object({
     title: z.string().optional(),
     description: z.string().optional(),
     date: z.string().optional(),
+    name: z.string().optional(),
+    email: z.string().optional(),
     chatId: z.string().optional(),
     sessionId: z.string().optional(),
     chatflowId: z.string().optional(),
@@ -32,6 +36,8 @@ const manualSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
   date: z.string().optional(),
+  name: z.string().optional(),
+  email: z.string().optional(),
   chatId: z.string().optional(),
   sessionId: z.string().optional(),
   chatflowId: z.string().optional(),
@@ -58,11 +64,10 @@ function extractClient(req) {
   const forwardedValue = Array.isArray(forwardedHeader)
     ? forwardedHeader[0]
     : forwardedHeader;
-  const forwarded = typeof forwardedValue === 'string' ? forwardedValue : undefined;
+  const forwarded =
+    typeof forwardedValue === 'string' ? forwardedValue : undefined;
   const ip =
-    forwarded?.split(',')[0]?.trim() ||
-    req.socket?.remoteAddress ||
-    '';
+    forwarded?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
   const userAgentHeader = req.headers['user-agent'];
   const userAgent = Array.isArray(userAgentHeader)
     ? userAgentHeader.join(', ')
@@ -81,6 +86,8 @@ function parseFlowiseIssuePayload(input) {
     title = 'Issue',
     description = '',
     date,
+    name,
+    email,
     chatId,
     sessionId,
     chatflowId,
@@ -91,6 +98,8 @@ function parseFlowiseIssuePayload(input) {
     title,
     description,
     date,
+    name,
+    email,
     chatId,
     sessionId,
     chatflowId,
@@ -113,6 +122,8 @@ async function maybeSendIssueEmail(issue) {
       `Source: ${issue.source}`,
       issue.description ? `Description: ${issue.description}` : undefined,
       issue.date ? `Date: ${issue.date}` : undefined,
+      issue.name ? `Name: ${issue.name}` : undefined,
+      issue.email ? `Email: ${issue.email}` : undefined,
       issue.chatId ? `Chat ID: ${issue.chatId}` : undefined,
       issue.sessionId ? `Session ID: ${issue.sessionId}` : undefined,
       issue.chatflowId ? `Chatflow ID: ${issue.chatflowId}` : undefined,
@@ -123,7 +134,9 @@ async function maybeSendIssueEmail(issue) {
       return;
     }
 
-    const html = `<p>${lines.map((line) => line.replace(/\n/g, '<br />')).join('</p><p>')}</p>`;
+    const html = `<p>${lines
+      .map((line) => line.replace(/\n/g, '<br />'))
+      .join('</p><p>')}</p>`;
     const text = lines.join('\n');
 
     const result = await emailService.send({
@@ -157,6 +170,8 @@ function buildIssueDocument(issue, source, client) {
 
   return {
     ...baseDocument,
+    ...(issue.name !== undefined ? { name: issue.name } : {}),
+    ...(issue.email !== undefined ? { email: issue.email } : {}),
     ...(issue.chatId !== undefined ? { chatId: issue.chatId } : {}),
     ...(issue.sessionId !== undefined ? { sessionId: issue.sessionId } : {}),
     ...(issue.chatflowId !== undefined ? { chatflowId: issue.chatflowId } : {}),
@@ -173,7 +188,9 @@ export async function createIssueFromFlowise(req, res, next) {
   try {
     const simplified = parseFlowiseIssuePayload(req.body);
     const client = extractClient(req);
-    const doc = await Issue.create(buildIssueDocument(simplified, 'flowise', client));
+    const doc = await Issue.create(
+      buildIssueDocument(simplified, 'flowise', client),
+    );
     await maybeSendIssueEmail({ ...simplified, source: 'flowise' });
     res.status(202).json({ received: true, id: doc._id });
   } catch (err) {
@@ -226,7 +243,13 @@ export async function getIssue(req, res, next) {
     const doc = await Issue.findById(id).lean();
 
     if (!doc) {
-      res.status(404).json({ status: 404, code: 'ISSUE_NOT_FOUND', message: 'Issue not found' });
+      res
+        .status(404)
+        .json({
+          status: 404,
+          code: 'ISSUE_NOT_FOUND',
+          message: 'Issue not found',
+        });
       return;
     }
 
@@ -235,7 +258,3 @@ export async function getIssue(req, res, next) {
     next(err);
   }
 }
-
-
-
-
