@@ -18,6 +18,7 @@ const summaryReportSchema = new Schema(
     compactRecap: { type: String, default: '' },
     name: { type: String, default: '' },
     email: { type: String, default: '' },
+    studentId: { type: Schema.Types.ObjectId, ref: 'Student', default: null },
     chatId: { type: String, default: '' },
     sessionId: { type: String, default: '' },
     chatflowId: { type: String, default: '' },

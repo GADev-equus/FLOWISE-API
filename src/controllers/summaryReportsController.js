@@ -19,6 +19,7 @@ const baseReportSchema = z.object({
   compactRecap: z.string().optional(),
   name: z.string().optional(),
   email: z.string().optional(),
+  studentId: z.string().optional(),
 });
 
 const metadataSchema = z.object({
@@ -54,6 +55,7 @@ const idSchema = z.object({
  * @property {string} [compactRecap]
  * @property {string} [name]
  * @property {string} [email]
+ * @property {string} [studentId]
  * @property {string} [chatId]
  * @property {string} [sessionId]
  * @property {string} [chatflowId]
@@ -163,6 +165,7 @@ async function maybeSendReportEmail(report) {
       { label: 'Compact Recap', value: report.compactRecap },
       { label: 'Name', value: report.name },
       { label: 'Email', value: report.email },
+      { label: 'Student ID', value: report.studentId },
       { label: 'Chat ID', value: report.chatId },
       { label: 'Session ID', value: report.sessionId },
       { label: 'Chatflow ID', value: report.chatflowId },
