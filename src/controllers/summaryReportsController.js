@@ -92,6 +92,26 @@ function extractClient(req) {
   return { ip, userAgent };
 }
 
+/**
+ * Extract custom headers and merge with body data.
+ * @param {import('express').Request} req
+ * @returns {Record<string, any>}
+ */
+function extractHeaderData(req) {
+  const headers = req.headers;
+  const headerData = {};
+  
+  // Extract custom fields from headers
+  if (headers.name) headerData.name = headers.name;
+  if (headers.email) headerData.email = headers.email;
+  if (headers.studentid) headerData.studentId = headers.studentid;
+  if (headers['x-flow-chat-id']) headerData.chatId = headers['x-flow-chat-id'];
+  if (headers['x-flow-session-id']) headerData.sessionId = headers['x-flow-session-id'];
+  if (headers['x-flow-chatflow-id']) headerData.chatflowId = headers['x-flow-chatflow-id'];
+  
+  return headerData;
+}
+
 function escapeHtml(input) {
   return input
     .replace(/&/g, '&amp;')
@@ -209,7 +229,14 @@ async function maybeSendReportEmail(report) {
  */
 export async function createSummaryReportFromFlowise(req, res, next) {
   try {
-    const { id, payload } = flowiseSchema.parse(req.body);
+    // Merge header data with body data
+    const headerData = extractHeaderData(req);
+    const mergedBody = { 
+      ...req.body, 
+      payload: { ...req.body?.payload, ...headerData } 
+    };
+    
+    const { id, payload } = flowiseSchema.parse(mergedBody);
     const client = extractClient(req);
 
     const doc = await SummaryReport.create({
@@ -234,7 +261,11 @@ export async function createSummaryReportFromFlowise(req, res, next) {
  */
 export async function createSummaryReport(req, res, next) {
   try {
-    const body = manualSchema.parse(req.body);
+    // Merge header data with body data (headers take precedence)
+    const headerData = extractHeaderData(req);
+    const mergedData = { ...req.body, ...headerData };
+    
+    const body = manualSchema.parse(mergedData);
     const client = extractClient(req);
 
     const doc = await SummaryReport.create({
