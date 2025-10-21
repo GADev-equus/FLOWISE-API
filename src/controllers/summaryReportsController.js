@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { env } from '../config/env.js';
 import { emailService } from '../services/emailService.js';
 import { SummaryReport } from '../models/SummaryReport.js';
+import { Student } from '../models/Student.js';
 import { logger } from '../utils/logger.js';
 
 const baseReportSchema = z.object({
@@ -284,14 +285,22 @@ export async function createSummaryReport(req, res, next) {
 }
 
 /**
- * List the most recent summary reports.
- * @param {import('express').Request} _req
+ * List the most recent summary reports, optionally filtered by studentId.
+ * @param {import('express').Request} req
  * @param {import('express').Response} res
  * @param {import('express').NextFunction} next
  */
-export async function listSummaryReports(_req, res, next) {
+export async function listSummaryReports(req, res, next) {
   try {
-    const items = await SummaryReport.find()
+    const { studentId } = req.query;
+
+    // Build filter query
+    const filter = {};
+    if (studentId) {
+      filter.studentId = studentId;
+    }
+
+    const items = await SummaryReport.find(filter)
       .sort({ createdAt: -1 })
       .limit(200)
       .lean();
@@ -302,7 +311,7 @@ export async function listSummaryReports(_req, res, next) {
 }
 
 /**
- * Retrieve a summary report by identifier.
+ * Retrieve a summary report by identifier with optional student validation.
  * @param {import('express').Request} req
  * @param {import('express').Response} res
  * @param {import('express').NextFunction} next
@@ -310,14 +319,101 @@ export async function listSummaryReports(_req, res, next) {
 export async function getSummaryReport(req, res, next) {
   try {
     const { id } = idSchema.parse(req.params);
+    const { studentId } = req.query;
+
     const doc = await SummaryReport.findById(id).lean();
 
     if (!doc) {
-      res.status(404).json({ error: 'Summary report not found' });
+      res.status(404).json({
+        status: 404,
+        code: 'REPORT_NOT_FOUND',
+        message: 'Summary report not found',
+      });
+      return;
+    }
+
+    // Optional: Validate that report belongs to requested student
+    if (studentId && doc.studentId?.toString() !== studentId) {
+      res.status(403).json({
+        status: 403,
+        code: 'FORBIDDEN',
+        message: 'You do not have permission to access this report',
+      });
       return;
     }
 
     res.json(doc);
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Get summary reports for students linked to a guardian.
+ * Guardian email must be provided in the 'guardian-email' header.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
+export async function getGuardianReports(req, res, next) {
+  try {
+    const guardianEmail = req.headers['guardian-email'];
+
+    if (!guardianEmail) {
+      res.status(401).json({
+        status: 401,
+        code: 'UNAUTHORIZED',
+        message: 'Guardian email is required in headers',
+      });
+      return;
+    }
+
+    // Normalize email
+    const normalizedEmail =
+      typeof guardianEmail === 'string'
+        ? guardianEmail.toLowerCase().trim()
+        : '';
+
+    // Find all students linked to this guardian
+    const students = await Student.find({
+      'guardian.email': normalizedEmail,
+    })
+      .select('_id name nickname email')
+      .lean();
+
+    if (!students || students.length === 0) {
+      res.status(404).json({
+        status: 404,
+        code: 'NO_STUDENTS_FOUND',
+        message: 'No students found for this guardian email',
+      });
+      return;
+    }
+
+    const studentIds = students.map((s) => s._id);
+
+    // Get all reports for those students
+    const reports = await SummaryReport.find({
+      studentId: { $in: studentIds },
+    })
+      .sort({ createdAt: -1 })
+      .populate('studentId', 'name nickname email')
+      .lean();
+
+    res.json({
+      success: true,
+      data: {
+        guardian: { email: normalizedEmail },
+        students: students.map((s) => ({
+          _id: s._id,
+          name: s.name,
+          nickname: s.nickname,
+          email: s.email,
+        })),
+        reports,
+        count: reports.length,
+      },
+    });
   } catch (err) {
     next(err);
   }
