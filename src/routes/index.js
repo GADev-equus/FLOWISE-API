@@ -4,6 +4,7 @@ import { health } from './health.js';
 import { issues } from './issues.js';
 import { summaryReports } from './summaryReports.js';
 import { students } from './students.js';
+import guardians from './guardians.js';
 
 export function buildRoutes(prefix = '/api/v1') {
   const scoped = Router();
@@ -12,12 +13,10 @@ export function buildRoutes(prefix = '/api/v1') {
   scoped.use(issues);
   scoped.use(summaryReports);
   scoped.use(students);
+  scoped.use('/guardians', guardians);
 
   const root = Router();
   root.use(prefix, scoped);
 
   return root;
 }
-
-
-
