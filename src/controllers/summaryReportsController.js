@@ -5,35 +5,54 @@ import { SummaryReport } from '../models/SummaryReport.js';
 import { Student } from '../models/Student.js';
 import { logger } from '../utils/logger.js';
 
-const baseReportSchema = z.object({
-  title: z.string().min(1),
-  date: z.string().min(1),
-  participants: z.string().min(1),
-  scopeCovered: z.string().min(1),
-  keyLearnings: z.string().min(1),
-  misconceptionsClarified: z.string().optional(),
-  studentStrengths: z.string().optional(),
-  gapsNextPriorities: z.string().optional(),
-  suggestedNextSteps: z.string().optional(),
-  questions: z.string().optional(),
-  sources: z.string().optional(),
-  compactRecap: z.string().optional(),
-  name: z.string().optional(),
-  email: z.string().optional(),
-  studentId: z.string().optional(),
+// Updated schema for new structure
+const identitySchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
 });
 
-const metadataSchema = z.object({
+const contextSchema = z.object({
   chatId: z.string().optional(),
   sessionId: z.string().optional(),
   chatflowId: z.string().optional(),
+  source: z.string().optional(),
+  sourceId: z.string().optional(),
 });
 
-const manualSchema = baseReportSchema.merge(metadataSchema);
+const sectionSchema = z.object({
+  board: z.string().min(1),
+  code: z.string().min(1),
+  label: z.string().optional(),
+});
+
+const sourceSchema = z.object({
+  type: z.string().min(1),
+  board: z.string().optional(),
+  ref: z.string().min(1),
+});
+
+const baseReportSchema = z.object({
+  studentId: z.string().min(1),
+  title: z.string().min(1),
+  identity: identitySchema,
+  context: contextSchema.optional(),
+  participants: z.array(z.string()).min(1),
+  sections: z.array(sectionSchema).optional(),
+  topics: z.array(z.string()).optional(),
+  scopeCovered: z.array(z.string()).min(1),
+  keyLearnings: z.array(z.string()).optional(),
+  misconceptionsClarified: z.array(z.string()).optional(),
+  studentStrengths: z.array(z.string()).optional(),
+  gapsNextPriorities: z.array(z.string()).optional(),
+  suggestedNextSteps: z.array(z.string()).optional(),
+  questions: z.array(z.string()).optional(),
+  sources: z.array(sourceSchema).optional(),
+  compactRecap: z.array(z.string()).optional(),
+});
 
 const flowiseSchema = z.object({
   id: z.string().optional(),
-  payload: baseReportSchema.merge(metadataSchema),
+  payload: baseReportSchema,
 });
 
 const idSchema = z.object({
@@ -41,34 +60,12 @@ const idSchema = z.object({
 });
 
 /**
- * @typedef {Object} SummaryReportPayload
- * @property {string} title
- * @property {string} date
- * @property {string} participants
- * @property {string} scopeCovered
- * @property {string} keyLearnings
- * @property {string} [misconceptionsClarified]
- * @property {string} [studentStrengths]
- * @property {string} [gapsNextPriorities]
- * @property {string} [suggestedNextSteps]
- * @property {string} [questions]
- * @property {string} [sources]
- * @property {string} [compactRecap]
- * @property {string} [name]
- * @property {string} [email]
- * @property {string} [studentId]
- * @property {string} [chatId]
- * @property {string} [sessionId]
- * @property {string} [chatflowId]
- */
-
-/**
- * @typedef {SummaryReportPayload & {source: string, sourceId?: string}} SummaryReportEmailPayload
- */
-
-/**
  * @typedef {Object} ClientInfo
  * @property {string} ip
+ * @property {string} userAgent
+ */
+
+/**
  * @property {string} userAgent
  */
 
@@ -103,16 +100,120 @@ function extractHeaderData(req) {
   const headerData = {};
 
   // Extract custom fields from headers
-  if (headers.name) headerData.name = headers.name;
-  if (headers.email) headerData.email = headers.email;
+  if (headers.name || headers.email) {
+    headerData.identity = {};
+    if (headers.name) headerData.identity.name = headers.name;
+    if (headers.email) headerData.identity.email = headers.email;
+  }
+
   if (headers.studentid) headerData.studentId = headers.studentid;
-  if (headers['x-flow-chat-id']) headerData.chatId = headers['x-flow-chat-id'];
+
+  // Context data
+  const contextFields = {};
+  if (headers['x-flow-chat-id'])
+    contextFields.chatId = headers['x-flow-chat-id'];
   if (headers['x-flow-session-id'])
-    headerData.sessionId = headers['x-flow-session-id'];
+    contextFields.sessionId = headers['x-flow-session-id'];
   if (headers['x-flow-chatflow-id'])
-    headerData.chatflowId = headers['x-flow-chatflow-id'];
+    contextFields.chatflowId = headers['x-flow-chatflow-id'];
+
+  if (Object.keys(contextFields).length > 0) {
+    headerData.context = contextFields;
+  }
 
   return headerData;
+}
+
+/**
+ * Transform old flat schema to new nested schema for backward compatibility.
+ * @param {Record<string, any>} data
+ * @returns {Record<string, any>}
+ */
+function transformLegacyFormat(data) {
+  // Check if data is already in new format
+  if (data.identity && typeof data.identity === 'object') {
+    return data; // Already new format
+  }
+
+  const transformed = { ...data };
+
+  // Transform identity fields
+  if (data.name || data.email) {
+    transformed.identity = {
+      name: data.name || '',
+      email: data.email || '',
+    };
+    delete transformed.name;
+    delete transformed.email;
+  }
+
+  // Transform context fields
+  const contextFields = {};
+  if (data.source) contextFields.source = data.source;
+  if (data.sourceId) contextFields.sourceId = data.sourceId;
+  if (data.chatId) contextFields.chatId = data.chatId;
+  if (data.sessionId) contextFields.sessionId = data.sessionId;
+  if (data.chatflowId) contextFields.chatflowId = data.chatflowId;
+
+  if (Object.keys(contextFields).length > 0) {
+    transformed.context = { ...transformed.context, ...contextFields };
+  }
+
+  // Clean up moved fields
+  delete transformed.source;
+  delete transformed.sourceId;
+  delete transformed.chatId;
+  delete transformed.sessionId;
+  delete transformed.chatflowId;
+  delete transformed.date; // Remove deprecated date field
+
+  // Transform string fields to arrays
+  const arrayFields = [
+    'participants',
+    'topics',
+    'scopeCovered',
+    'keyLearnings',
+    'misconceptionsClarified',
+    'studentStrengths',
+    'gapsNextPriorities',
+    'suggestedNextSteps',
+    'questions',
+    'compactRecap',
+  ];
+
+  arrayFields.forEach((field) => {
+    if (transformed[field] && typeof transformed[field] === 'string') {
+      // Split by newlines or use as single-item array
+      const value = transformed[field].trim();
+      if (value) {
+        transformed[field] = value
+          .split('\n')
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0);
+      } else {
+        transformed[field] = [];
+      }
+    }
+  });
+
+  // Transform sources string to array of objects
+  if (transformed.sources && typeof transformed.sources === 'string') {
+    const sourcesText = transformed.sources.trim();
+    if (sourcesText) {
+      // Simple transformation: create generic source entries
+      transformed.sources = sourcesText
+        .split('\n')
+        .map((line) => ({
+          type: 'reference',
+          ref: line.trim(),
+        }))
+        .filter((s) => s.ref);
+    } else {
+      transformed.sources = [];
+    }
+  }
+
+  return transformed;
 }
 
 function escapeHtml(input) {
@@ -125,14 +226,19 @@ function escapeHtml(input) {
 }
 
 /**
- * Format a report field for HTML output.
+ * Format a report field for HTML output (handles arrays).
  * @param {string} label
- * @param {string | undefined} value
+ * @param {string | string[] | undefined} value
  * @returns {string | undefined}
  */
 function formatField(label, value) {
-  if (!value) {
+  if (!value || (Array.isArray(value) && value.length === 0)) {
     return undefined;
+  }
+
+  if (Array.isArray(value)) {
+    const items = value.map((item) => `<li>${escapeHtml(item)}</li>`).join('');
+    return `<p><strong>${label}:</strong><ul>${items}</ul></p>`;
   }
 
   const escaped = escapeHtml(value).replace(/\n/g, '<br />');
@@ -140,23 +246,27 @@ function formatField(label, value) {
 }
 
 /**
- * Format a report field for plain-text output.
+ * Format a report field for plain-text output (handles arrays).
  * @param {string} label
- * @param {string | undefined} value
+ * @param {string | string[] | undefined} value
  * @returns {string | undefined}
  */
 function formatFieldText(label, value) {
-  if (!value) {
+  if (!value || (Array.isArray(value) && value.length === 0)) {
     return undefined;
   }
 
-  return `${label}:
-${value}`;
+  if (Array.isArray(value)) {
+    const items = value.map((item, idx) => `  ${idx + 1}. ${item}`).join('\n');
+    return `${label}:\n${items}`;
+  }
+
+  return `${label}:\n${value}`;
 }
 
 /**
  * Send a summary report email when configured.
- * @param {SummaryReportEmailPayload} report
+ * @param {any} report
  */
 async function maybeSendReportEmail(report) {
   if (!env.summaryReportAlertTo) {
@@ -168,12 +278,15 @@ async function maybeSendReportEmail(report) {
     const sections = [
       {
         label: 'Source',
-        value: report.sourceId
-          ? `${report.source} (${report.sourceId})`
-          : report.source,
+        value: report.context?.sourceId
+          ? `${report.context.source} (${report.context.sourceId})`
+          : report.context?.source,
       },
-      { label: 'Date', value: report.date },
+      { label: 'Student Name', value: report.identity?.name },
+      { label: 'Student Email', value: report.identity?.email },
+      { label: 'Student ID', value: report.studentId },
       { label: 'Participants', value: report.participants },
+      { label: 'Topics', value: report.topics },
       { label: 'Scope Covered', value: report.scopeCovered },
       { label: 'Key Learnings', value: report.keyLearnings },
       {
@@ -184,14 +297,10 @@ async function maybeSendReportEmail(report) {
       { label: 'Gaps / Next Priorities', value: report.gapsNextPriorities },
       { label: 'Suggested Next Steps', value: report.suggestedNextSteps },
       { label: 'Questions', value: report.questions },
-      { label: 'Sources', value: report.sources },
       { label: 'Compact Recap', value: report.compactRecap },
-      { label: 'Name', value: report.name },
-      { label: 'Email', value: report.email },
-      { label: 'Student ID', value: report.studentId },
-      { label: 'Chat ID', value: report.chatId },
-      { label: 'Session ID', value: report.sessionId },
-      { label: 'Chatflow ID', value: report.chatflowId },
+      { label: 'Chat ID', value: report.context?.chatId },
+      { label: 'Session ID', value: report.context?.sessionId },
+      { label: 'Chatflow ID', value: report.context?.chatflowId },
     ];
 
     const htmlSections = sections
@@ -232,24 +341,36 @@ async function maybeSendReportEmail(report) {
  */
 export async function createSummaryReportFromFlowise(req, res, next) {
   try {
-    // Merge header data with body data
     const headerData = extractHeaderData(req);
-    const mergedBody = {
-      ...req.body,
-      payload: { ...req.body?.payload, ...headerData },
+
+    // Transform legacy format if needed
+    const transformedPayload = transformLegacyFormat(req.body?.payload || {});
+
+    // Deep merge context
+    const mergedPayload = {
+      ...transformedPayload,
+      ...headerData,
+      context: {
+        ...transformedPayload?.context,
+        ...headerData.context,
+        source: 'flowise',
+        sourceId: req.body?.id ?? '',
+      },
+      identity: {
+        ...transformedPayload?.identity,
+        ...headerData.identity,
+      },
     };
 
-    const { id, payload } = flowiseSchema.parse(mergedBody);
+    const { payload } = flowiseSchema.parse({ payload: mergedPayload });
     const client = extractClient(req);
 
     const doc = await SummaryReport.create({
-      source: 'flowise',
-      sourceId: id ?? '',
       ...payload,
       client,
     });
 
-    await maybeSendReportEmail({ ...payload, source: 'flowise', sourceId: id });
+    await maybeSendReportEmail(payload);
     res.status(201).json(doc);
   } catch (err) {
     next(err);
@@ -264,20 +385,35 @@ export async function createSummaryReportFromFlowise(req, res, next) {
  */
 export async function createSummaryReport(req, res, next) {
   try {
-    // Merge header data with body data (headers take precedence)
     const headerData = extractHeaderData(req);
-    const mergedData = { ...req.body, ...headerData };
 
-    const body = manualSchema.parse(mergedData);
+    // Transform legacy format if needed
+    const transformedBody = transformLegacyFormat(req.body || {});
+
+    // Deep merge
+    const mergedData = {
+      ...transformedBody,
+      ...headerData,
+      context: {
+        ...transformedBody?.context,
+        ...headerData.context,
+        source: 'manual',
+      },
+      identity: {
+        ...transformedBody?.identity,
+        ...headerData.identity,
+      },
+    };
+
+    const body = baseReportSchema.parse(mergedData);
     const client = extractClient(req);
 
     const doc = await SummaryReport.create({
-      source: 'manual',
       ...body,
       client,
     });
 
-    await maybeSendReportEmail({ ...body, source: 'manual' });
+    await maybeSendReportEmail(body);
     res.status(201).json(doc);
   } catch (err) {
     next(err);
