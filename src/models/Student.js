@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { DEFAULT_CHATFLOW_ID } from '../config/chatflowConstants.js';
 
 const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
@@ -10,6 +11,7 @@ const enrolmentSchema = new Schema(
     level: { type: String, required: true },
     books: { type: [String], default: [] },
     examDates: { type: [String], default: [] },
+    chatflowId: { type: String, default: DEFAULT_CHATFLOW_ID },
   },
   { _id: false },
 );
@@ -58,7 +60,7 @@ const studentSchema = new Schema(
     preferredColourForDyslexia: { type: String, default: '' },
     chatId: { type: String, default: '' },
     sessionId: { type: String, default: '' },
-    chatflowId: { type: String, default: '' },
+    chatflowId: { type: String, default: DEFAULT_CHATFLOW_ID },
     client: {
       ip: { type: String, default: '' },
       userAgent: { type: String, default: '' },

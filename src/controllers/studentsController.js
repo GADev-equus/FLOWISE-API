@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { emailService } from '../services/emailService.js';
 import { Student } from '../models/Student.js';
 import { logger } from '../utils/logger.js';
+import { DEFAULT_CHATFLOW_ID } from '../config/chatflowConstants.js';
 
 const enrolmentSchema = z.object({
   subject: z.string().min(1, 'Subject is required'),
@@ -10,6 +11,7 @@ const enrolmentSchema = z.object({
   level: z.string().min(1, 'Level is required'),
   books: z.array(z.string()).optional().default([]),
   examDates: z.array(z.string()).optional().default([]),
+  chatflowId: z.string().optional().default(''),
 });
 
 const guardianSchema = z.object({
@@ -106,6 +108,7 @@ const studentIdSchema = z.object({
  * @property {string} level
  * @property {string[]} [books]
  * @property {string[]} [examDates]
+ * @property {string} [chatflowId]
  */
 
 /**
@@ -182,6 +185,7 @@ async function maybeSendStudentEmail(student) {
         level: enrolment.level,
         books: enrolment.books,
         examDates: enrolment.examDates,
+        chatflowId: enrolment.chatflowId,
       })),
       preferredColourForDyslexia: student.preferredColourForDyslexia,
       chatId: student.chatId,
@@ -261,6 +265,8 @@ function normalizeStudentPayload(input) {
     name: input.guardian.name.trim(),
     email: input.guardian.email.trim().toLowerCase(),
   };
+  const normalizedChatflowId =
+    input.chatflowId?.trim() || DEFAULT_CHATFLOW_ID;
 
   const enrolments = input.enrolments.map((enrolment) => ({
     ...enrolment,
@@ -269,6 +275,7 @@ function normalizeStudentPayload(input) {
     books: enrolment.books?.map((book) => book.trim()).filter(Boolean) ?? [],
     examDates:
       enrolment.examDates?.map((date) => date.trim()).filter(Boolean) ?? [],
+    chatflowId: enrolment.chatflowId?.trim() || DEFAULT_CHATFLOW_ID,
   }));
 
   return {
@@ -280,7 +287,7 @@ function normalizeStudentPayload(input) {
     preferredColourForDyslexia: input.preferredColourForDyslexia?.trim() ?? '',
     chatId: input.chatId?.trim(),
     sessionId: input.sessionId?.trim(),
-    chatflowId: input.chatflowId?.trim(),
+    chatflowId: normalizedChatflowId,
     enrolments,
   };
 }
@@ -461,6 +468,16 @@ export async function verifyEmail(req, res, next) {
         email: student.email,
         name: student.name,
         nickname: student.nickname || '',
+        enrolments: (student.enrolments || []).map((enrolment) => ({
+          subject: enrolment.subject,
+          country: enrolment.country,
+          examBody: enrolment.examBody,
+          level: enrolment.level,
+          books: enrolment.books,
+          examDates: enrolment.examDates,
+        chatflowId: enrolment.chatflowId || DEFAULT_CHATFLOW_ID,
+      })),
+        chatflowId: student.chatflowId || DEFAULT_CHATFLOW_ID,
       },
     });
   } catch (error) {

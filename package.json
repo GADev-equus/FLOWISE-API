@@ -10,7 +10,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon --watch src --ext js,json --exec \"node src/server.js\"",
     "build": "node -e \"console.log('No build step required for Flowise API')\"",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "backfill:chatflows": "node scripts/backfillEnrolmentChatflows.js"
   },
   "keywords": [],
   "author": "",
