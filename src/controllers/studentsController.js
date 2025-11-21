@@ -422,7 +422,9 @@ function normalizeEnrolment(enrolment, fallbackChatflowId, studentChatflowId) {
   const trim = (value) => (typeof value === 'string' ? value.trim() : value);
 
   const incomingFlow = trim(enrolment.chatflowId);
-  const enrolmentFlow = fallbackChatflowId ? trim(fallbackChatflowId) : '';
+  const enrolmentFlow = fallbackChatflowId
+    ? trim(fallbackChatflowId)
+    : DEFAULT_CHATFLOW_ID;
   const studentFlow = studentChatflowId ? trim(studentChatflowId) : '';
   const isNonDefault = (value) =>
     Boolean(value && value !== DEFAULT_CHATFLOW_ID);
@@ -430,9 +432,13 @@ function normalizeEnrolment(enrolment, fallbackChatflowId, studentChatflowId) {
   const normalizedChatflow = (() => {
     if (isNonDefault(incomingFlow)) return incomingFlow;
     if (isNonDefault(enrolmentFlow)) return enrolmentFlow;
+    // Preserve any provided value (including the default) before falling back
+    const providedChatflow = incomingFlow || enrolmentFlow;
+    if (providedChatflow) {
+      return providedChatflow;
+    }
     if (isNonDefault(studentFlow)) return studentFlow;
-    // At this point either everything is default/empty; prefer any provided value before falling back
-    return incomingFlow || enrolmentFlow || studentFlow || DEFAULT_CHATFLOW_ID;
+    return DEFAULT_CHATFLOW_ID;
   })();
 
   return {
