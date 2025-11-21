@@ -94,6 +94,20 @@ const studentIdSchema = z.object({
   id: z.string().min(1, 'Student id is required'),
 });
 
+const enrolmentIdSchema = z.object({
+  id: z.string().min(1, 'Student id is required'),
+});
+
+const buildEnrolmentKey = (enrolment) =>
+  [
+    enrolment.subject,
+    enrolment.country,
+    enrolment.examBody,
+    enrolment.level,
+  ]
+    .map((value) => (value || '').trim().toLowerCase())
+    .join('|');
+
 /**
  * @typedef {Object} GuardianInfo
  * @property {string} name
@@ -268,15 +282,7 @@ function normalizeStudentPayload(input) {
   const normalizedChatflowId =
     input.chatflowId?.trim() || DEFAULT_CHATFLOW_ID;
 
-  const enrolments = input.enrolments.map((enrolment) => ({
-    ...enrolment,
-    subject: enrolment.subject.trim(),
-    country: enrolment.country.trim(),
-    books: enrolment.books?.map((book) => book.trim()).filter(Boolean) ?? [],
-    examDates:
-      enrolment.examDates?.map((date) => date.trim()).filter(Boolean) ?? [],
-    chatflowId: enrolment.chatflowId?.trim() || DEFAULT_CHATFLOW_ID,
-  }));
+  const enrolments = input.enrolments.map(normalizeEnrolment);
 
   return {
     ...input,
@@ -289,6 +295,42 @@ function normalizeStudentPayload(input) {
     sessionId: input.sessionId?.trim(),
     chatflowId: normalizedChatflowId,
     enrolments,
+  };
+}
+
+/**
+ * Normalize a single enrolment record for persistence/use.
+ * @param {import('zod').infer<typeof enrolmentSchema>} enrolment
+ * @param {string} [fallbackChatflowId] enrolment-level fallback
+ * @param {string} [studentChatflowId] student-level fallback
+ */
+function normalizeEnrolment(enrolment, fallbackChatflowId, studentChatflowId) {
+  const trim = (value) => (typeof value === 'string' ? value.trim() : value);
+
+  const incomingFlow = trim(enrolment.chatflowId);
+  const enrolmentFlow = fallbackChatflowId ? trim(fallbackChatflowId) : '';
+  const studentFlow = studentChatflowId ? trim(studentChatflowId) : '';
+  const isNonDefault = (value) =>
+    Boolean(value && value !== DEFAULT_CHATFLOW_ID);
+
+  const normalizedChatflow = (() => {
+    if (isNonDefault(incomingFlow)) return incomingFlow;
+    if (isNonDefault(enrolmentFlow)) return enrolmentFlow;
+    if (isNonDefault(studentFlow)) return studentFlow;
+    // At this point either everything is default/empty; prefer any provided value before falling back
+    return incomingFlow || enrolmentFlow || studentFlow || DEFAULT_CHATFLOW_ID;
+  })();
+
+  return {
+    ...enrolment,
+    subject: trim(enrolment.subject),
+    country: trim(enrolment.country),
+    examBody: trim(enrolment.examBody),
+    level: trim(enrolment.level),
+    books: enrolment.books?.map((book) => trim(book)).filter(Boolean) ?? [],
+    examDates:
+      enrolment.examDates?.map((date) => trim(date)).filter(Boolean) ?? [],
+    chatflowId: normalizedChatflow,
   };
 }
 
@@ -475,11 +517,155 @@ export async function verifyEmail(req, res, next) {
           level: enrolment.level,
           books: enrolment.books,
           examDates: enrolment.examDates,
-        chatflowId: enrolment.chatflowId || DEFAULT_CHATFLOW_ID,
-      })),
+          chatflowId: enrolment.chatflowId || DEFAULT_CHATFLOW_ID,
+        })),
         chatflowId: student.chatflowId || DEFAULT_CHATFLOW_ID,
       },
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Append a new enrolment to an existing student.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
+export async function addStudentEnrolment(req, res, next) {
+  try {
+    const { id } = enrolmentIdSchema.parse(req.params);
+    const enrolment = enrolmentSchema.parse(req.body);
+    const normalized = normalizeEnrolment(enrolment);
+    const enrolmentKey = buildEnrolmentKey(normalized);
+
+    const student = await Student.findById(id).lean();
+
+    if (!student) {
+      res.status(404).json({
+        status: 404,
+        code: 'STUDENT_NOT_FOUND',
+        message: 'Student not found',
+      });
+      return;
+    }
+
+    const existingKeys = (student.enrolments || []).map(buildEnrolmentKey);
+    if (existingKeys.includes(enrolmentKey)) {
+      res.status(409).json({
+        status: 409,
+        code: 'ENROLMENT_ALREADY_EXISTS',
+        message:
+          'This subject is already on your profile. Please edit the existing enrolment instead.',
+      });
+      return;
+    }
+
+    const updated = await Student.findByIdAndUpdate(
+      id,
+      { $push: { enrolments: normalized } },
+      { new: true, lean: true },
+    );
+
+    if (!updated) {
+      res.status(404).json({
+        status: 404,
+        code: 'STUDENT_NOT_FOUND',
+        message: 'Student not found',
+      });
+      return;
+    }
+
+    res.status(200).json(updated);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Update an existing enrolment on a student by index.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {import('express').NextFunction} next
+ */
+export async function updateStudentEnrolment(req, res, next) {
+  try {
+    const { id } = enrolmentIdSchema.parse(req.params);
+    const indexRaw = req.params?.index;
+    const index = Number.parseInt(indexRaw, 10);
+
+    if (Number.isNaN(index) || index < 0) {
+      res.status(400).json({
+        status: 400,
+        code: 'INVALID_ENROLMENT_INDEX',
+        message: 'Enrolment index must be a non-negative number',
+      });
+      return;
+    }
+
+    const enrolment = enrolmentSchema.parse(req.body);
+
+    const student = await Student.findById(id).lean();
+
+    if (!student) {
+      res.status(404).json({
+        status: 404,
+        code: 'STUDENT_NOT_FOUND',
+        message: 'Student not found',
+      });
+      return;
+    }
+
+    const enrolments = student.enrolments || [];
+    if (index >= enrolments.length) {
+      res.status(404).json({
+        status: 404,
+        code: 'ENROLMENT_NOT_FOUND',
+        message: 'Enrolment not found for this student',
+      });
+      return;
+    }
+
+    const existingKeys = enrolments.map(buildEnrolmentKey);
+    // Allow updating the same slot without tripping duplicate check
+    const otherKeys = existingKeys.filter((_, idx) => idx !== index);
+
+    const normalized = normalizeEnrolment(
+      enrolment,
+      enrolments[index]?.chatflowId,
+      student.chatflowId,
+    );
+    const enrolmentKey = buildEnrolmentKey(normalized);
+    if (otherKeys.includes(enrolmentKey)) {
+      res.status(409).json({
+        status: 409,
+        code: 'ENROLMENT_ALREADY_EXISTS',
+        message:
+          'This subject already exists on your profile. Please edit the existing enrolment instead.',
+      });
+      return;
+    }
+
+    const updatedEnrolments = [...enrolments];
+    updatedEnrolments[index] = normalized;
+
+    const updated = await Student.findByIdAndUpdate(
+      id,
+      { enrolments: updatedEnrolments },
+      { new: true, lean: true },
+    );
+
+    if (!updated) {
+      res.status(404).json({
+        status: 404,
+        code: 'STUDENT_NOT_FOUND',
+        message: 'Student not found',
+      });
+      return;
+    }
+
+    res.status(200).json(updated);
   } catch (error) {
     next(error);
   }
