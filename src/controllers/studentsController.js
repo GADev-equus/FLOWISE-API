@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { emailService } from '../services/emailService.js';
+import { env } from '../config/env.js';
 import { Student } from '../models/Student.js';
 import { logger } from '../utils/logger.js';
 import { DEFAULT_CHATFLOW_ID } from '../config/chatflowConstants.js';
@@ -108,6 +109,14 @@ const buildEnrolmentKey = (enrolment) =>
     .map((value) => (value || '').trim().toLowerCase())
     .join('|');
 
+const escapeHtml = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
 /**
  * @typedef {Object} GuardianInfo
  * @property {string} name
@@ -214,6 +223,111 @@ async function maybeSendStudentEmail(student) {
     }
   } catch (error) {
     logger.warn({ err: error }, 'Failed to send student alert email');
+  }
+}
+
+async function notifyEnrolmentAdded(student, enrolment) {
+  if (!env.studentAlertTo) {
+    logger.warn(
+      'studentAlertTo not configured; skipping enrolment added email.',
+    );
+    return;
+  }
+
+  const subject = `Student added subject: ${enrolment.subject} (${enrolment.level})`;
+  const lines = [
+    `Email subject: ${subject}`,
+    `Name: ${student.name}`,
+    student.nickname ? `Nickname: ${student.nickname}` : undefined,
+    `Email: ${student.email}`,
+    student.source
+      ? `Source: ${student.source}${
+          student.sourceId ? ` (${student.sourceId})` : ''
+        }`
+      : undefined,
+    `Subject: ${enrolment.subject}`,
+    `Country: ${enrolment.country}`,
+    `Exam body: ${enrolment.examBody}`,
+    `Level: ${enrolment.level}`,
+    enrolment.books?.length
+      ? `Study resources: ${enrolment.books.join(', ')}`
+      : undefined,
+    enrolment.examDates?.length
+      ? `Planned exam dates: ${enrolment.examDates.join(', ')}`
+      : undefined,
+    enrolment.chatflowId
+      ? `Enrolment chatflow ID: ${enrolment.chatflowId}`
+      : undefined,
+    student.chatflowId ? `Student chatflow ID: ${student.chatflowId}` : undefined,
+  ].filter(Boolean);
+
+  const now = new Date().toISOString();
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; padding: 16px; background: #f7f9fc; color: #0f172a;">
+      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 6px 14px rgba(15, 23, 42, 0.06);">
+        <p style="margin: 0 0 8px; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #475569;">
+          Enrolment update
+        </p>
+        <h1 style="margin: 0 0 12px; font-size: 22px;">Student added a subject</h1>
+        <p style="margin: 0 0 16px; color: #334155;"><strong>Email subject:</strong> ${escapeHtml(subject)}</p>
+        <div style="border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; background: #f8fafc; margin-bottom: 14px;">
+          <p style="margin: 0 0 8px;"><strong>Name:</strong> ${escapeHtml(student.name)}</p>
+          ${student.nickname ? `<p style="margin: 0 0 8px;"><strong>Nickname:</strong> ${escapeHtml(student.nickname)}</p>` : ''}
+          <p style="margin: 0 0 8px;"><strong>Email:</strong> <a href="mailto:${escapeHtml(student.email)}" style="color: #2563eb;">${escapeHtml(student.email)}</a></p>
+          ${
+            student.source
+              ? `<p style="margin: 0 0 8px;"><strong>Source:</strong> ${escapeHtml(student.source)}${
+                  student.sourceId ? ` (${escapeHtml(student.sourceId)})` : ''
+                }</p>`
+              : ''
+          }
+        </div>
+        <div style="border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; background: #fff; margin-bottom: 14px;">
+          <h2 style="margin: 0 0 10px; font-size: 16px;">Subject details</h2>
+          <p style="margin: 0 0 6px;"><strong>Subject:</strong> ${escapeHtml(enrolment.subject)}</p>
+          <p style="margin: 0 0 6px;"><strong>Country:</strong> ${escapeHtml(enrolment.country)}</p>
+          <p style="margin: 0 0 6px;"><strong>Exam body:</strong> ${escapeHtml(enrolment.examBody)}</p>
+          <p style="margin: 0 0 10px;"><strong>Level:</strong> ${escapeHtml(enrolment.level)}</p>
+          ${
+            enrolment.books?.length
+              ? `<p style="margin: 0 0 6px;"><strong>Study resources:</strong> ${escapeHtml(enrolment.books.join(', '))}</p>`
+              : ''
+          }
+          ${
+            enrolment.examDates?.length
+              ? `<p style="margin: 0;"><strong>Planned exam dates:</strong> ${escapeHtml(enrolment.examDates.join(', '))}</p>`
+              : ''
+          }
+        </div>
+        <div style="border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; background: #fff;">
+          <p style="margin: 0 0 6px;"><strong>Enrolment chatflow ID:</strong> ${escapeHtml(enrolment.chatflowId || 'Not provided')}</p>
+          <p style="margin: 0 0 6px;"><strong>Student chatflow ID:</strong> ${escapeHtml(student.chatflowId || 'Not provided')}</p>
+          <p style="margin: 8px 0 0; font-size: 12px; color: #475569;">Environment: ${escapeHtml(env.nodeEnv)} · Sent at ${escapeHtml(now)}</p>
+        </div>
+      </div>
+    </div>
+  `;
+  const text = [...lines, `Environment: ${env.nodeEnv}`, `Sent at: ${now}`].join(
+    '\n',
+  );
+
+  try {
+    const result = await emailService.send({
+      to: env.studentAlertTo,
+      subject,
+      html,
+      text,
+      tags: [{ name: 'category', value: 'student_enrolment' }],
+    });
+
+    if (!result.success && !result.skipped) {
+      logger.warn(
+        { err: result.error },
+        'Failed to send enrolment added email',
+      );
+    }
+  } catch (error) {
+    logger.warn({ err: error }, 'Failed to send enrolment added email');
   }
 }
 
@@ -577,6 +691,7 @@ export async function addStudentEnrolment(req, res, next) {
       return;
     }
 
+    await notifyEnrolmentAdded(updated, normalized);
     res.status(200).json(updated);
   } catch (error) {
     next(error);
