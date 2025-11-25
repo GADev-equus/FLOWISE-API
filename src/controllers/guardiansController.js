@@ -67,6 +67,12 @@ export const getStudentsByGuardianEmail = async (req, res) => {
         nickname: student.nickname || null,
         email: student.email,
         enrolmentCount: student.enrolments?.length || 0,
+        enrolments: (student.enrolments || []).map((enrolment) => ({
+          subject: enrolment.subject,
+          country: enrolment.country,
+          examBody: enrolment.examBody,
+          level: enrolment.level,
+        })),
       })),
     });
   } catch (error) {
